@@ -1,0 +1,112 @@
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+
+/// Represents the current connectivity state
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ConnectivityState {
+    Online,
+    Degraded,
+    Offline,
+}
+
+impl std::fmt::Display for ConnectivityState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConnectivityState::Online => write!(f, "ONLINE"),
+            ConnectivityState::Degraded => write!(f, "DEGRADED"),
+            ConnectivityState::Offline => write!(f, "OFFLINE"),
+        }
+    }
+}
+
+/// Result of a single ping attempt
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PingResult {
+    pub target: String,
+    pub target_name: String,
+    pub timestamp: DateTime<Utc>,
+    pub success: bool,
+    pub latency_ms: Option<f64>,
+    pub error: Option<String>,
+}
+
+/// A network hop from traceroute
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TracerouteHop {
+    pub hop_number: u8,
+    pub ip: Option<String>,
+    pub hostname: Option<String>,
+    pub latency_ms: Option<f64>,
+    pub timeout: bool,
+}
+
+/// Full traceroute result
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TracerouteResult {
+    pub target: String,
+    pub timestamp: DateTime<Utc>,
+    pub hops: Vec<TracerouteHop>,
+    pub success: bool,
+}
+
+/// An outage event
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Outage {
+    pub id: Option<i64>,
+    pub start_time: DateTime<Utc>,
+    pub end_time: Option<DateTime<Utc>>,
+    pub duration_secs: Option<f64>,
+    pub affected_targets: Vec<String>,
+    pub failing_hop: Option<u8>,
+    pub failing_hop_ip: Option<String>,
+    pub notes: Option<String>,
+}
+
+impl Outage {
+    pub fn new(affected_targets: Vec<String>) -> Self {
+        Self {
+            id: None,
+            start_time: Utc::now(),
+            end_time: None,
+            duration_secs: None,
+            affected_targets,
+            failing_hop: None,
+            failing_hop_ip: None,
+            notes: None,
+        }
+    }
+
+    pub fn end(&mut self) {
+        let now = Utc::now();
+        self.end_time = Some(now);
+        self.duration_secs = Some((now - self.start_time).num_milliseconds() as f64 / 1000.0);
+    }
+}
+
+/// A monitoring target
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Target {
+    pub name: String,
+    pub ip: String,
+}
+
+impl Target {
+    pub fn new(name: impl Into<String>, ip: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            ip: ip.into(),
+        }
+    }
+}
+
+/// Statistics summary
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Stats {
+    pub period_start: DateTime<Utc>,
+    pub period_end: DateTime<Utc>,
+    pub total_outages: u32,
+    pub total_downtime_secs: f64,
+    pub availability_percent: f64,
+    pub avg_outage_duration_secs: Option<f64>,
+    pub most_common_failing_hop: Option<u8>,
+}

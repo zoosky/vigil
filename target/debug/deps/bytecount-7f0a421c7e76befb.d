@@ -1,0 +1,11 @@
+/Users/andreas/dev/kapptec/my-networkmonitor/target/debug/deps/libbytecount-7f0a421c7e76befb.rmeta: /Users/andreas/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bytecount-0.6.9/src/lib.rs /Users/andreas/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bytecount-0.6.9/src/naive.rs /Users/andreas/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bytecount-0.6.9/src/integer_simd.rs /Users/andreas/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bytecount-0.6.9/src/simd/mod.rs /Users/andreas/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bytecount-0.6.9/src/simd/aarch64.rs
+
+/Users/andreas/dev/kapptec/my-networkmonitor/target/debug/deps/libbytecount-7f0a421c7e76befb.rlib: /Users/andreas/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bytecount-0.6.9/src/lib.rs /Users/andreas/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bytecount-0.6.9/src/naive.rs /Users/andreas/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bytecount-0.6.9/src/integer_simd.rs /Users/andreas/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bytecount-0.6.9/src/simd/mod.rs /Users/andreas/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bytecount-0.6.9/src/simd/aarch64.rs
+
+/Users/andreas/dev/kapptec/my-networkmonitor/target/debug/deps/bytecount-7f0a421c7e76befb.d: /Users/andreas/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bytecount-0.6.9/src/lib.rs /Users/andreas/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bytecount-0.6.9/src/naive.rs /Users/andreas/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bytecount-0.6.9/src/integer_simd.rs /Users/andreas/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bytecount-0.6.9/src/simd/mod.rs /Users/andreas/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bytecount-0.6.9/src/simd/aarch64.rs
+
+/Users/andreas/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bytecount-0.6.9/src/lib.rs:
+/Users/andreas/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bytecount-0.6.9/src/naive.rs:
+/Users/andreas/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bytecount-0.6.9/src/integer_simd.rs:
+/Users/andreas/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bytecount-0.6.9/src/simd/mod.rs:
+/Users/andreas/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bytecount-0.6.9/src/simd/aarch64.rs:

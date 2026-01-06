@@ -15,7 +15,7 @@ This file provides context for Claude Code sessions working on this project.
 | Feature | Status | File(s) |
 |---------|--------|---------|
 | 001 Core Infrastructure | Done | `config.rs`, `db.rs`, `models.rs`, `lib.rs`, `main.rs` |
-| 002 Ping Monitor | Pending | `src/monitor/ping.rs` |
+| 002 Ping Monitor | Done | `src/monitor/ping.rs` |
 | 003 Outage Detection | Pending | `src/monitor/state.rs` |
 | 004 Hop Analysis | Pending | `src/monitor/traceroute.rs` |
 | 005 CLI Reporting | Pending | `src/cli/*.rs` |
@@ -25,7 +25,7 @@ This file provides context for Claude Code sessions working on this project.
 
 Follow feature specs sequentially: `docs/features/001-*.md` through `006-*.md`
 
-Current: **Start Feature 002 (Ping Monitor)**
+Current: **Start Feature 003 (Outage Detection)**
 
 ## Key Design Decisions
 

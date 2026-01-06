@@ -6,9 +6,10 @@ pub mod cli;
 
 use config::Config;
 use std::path::Path;
+use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
-/// Initialize the logging framework
+/// Initialize the logging framework with daily log rotation
 pub fn init_logging(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     let filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new(&config.logging.level));
@@ -22,31 +23,69 @@ pub fn init_logging(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
         .with_file(false)
         .compact();
 
-    // File layer (if configured)
+    // File layer with daily rotation (if configured)
     if let Ok(Some(log_path)) = config.log_path() {
-        if let Some(parent) = log_path.parent() {
-            std::fs::create_dir_all(parent)?;
+        if let Some(log_dir) = log_path.parent() {
+            std::fs::create_dir_all(log_dir)?;
+
+            // Use daily rotation - creates files like monitor.2024-01-15.log
+            let file_appender = RollingFileAppender::new(
+                Rotation::DAILY,
+                log_dir,
+                "monitor.log",
+            );
+
+            let file_layer = fmt::layer()
+                .with_target(true)
+                .with_ansi(false)
+                .with_writer(file_appender);
+
+            subscriber
+                .with(console_layer)
+                .with(file_layer)
+                .init();
+        } else {
+            subscriber.with(console_layer).init();
         }
-
-        let file = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&log_path)?;
-
-        let file_layer = fmt::layer()
-            .with_target(true)
-            .with_ansi(false)
-            .with_writer(file);
-
-        subscriber
-            .with(console_layer)
-            .with(file_layer)
-            .init();
     } else {
         subscriber.with(console_layer).init();
     }
 
     Ok(())
+}
+
+/// Clean up old log files older than max_age_days
+pub fn cleanup_old_logs(log_dir: &Path, max_age_days: u32) -> Result<usize, Box<dyn std::error::Error>> {
+    use std::time::Duration;
+
+    let mut deleted = 0;
+    let max_age = Duration::from_secs(max_age_days as u64 * 86400);
+
+    for entry in std::fs::read_dir(log_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+
+        // Only process log files
+        if !path.extension().map_or(false, |ext| ext == "log") {
+            continue;
+        }
+
+        // Check file age
+        if let Ok(metadata) = entry.metadata() {
+            if let Ok(modified) = metadata.modified() {
+                if let Ok(age) = modified.elapsed() {
+                    if age > max_age {
+                        if std::fs::remove_file(&path).is_ok() {
+                            tracing::info!("Removed old log file: {:?}", path);
+                            deleted += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(deleted)
 }
 
 /// Initialize the application (config, logging, database)

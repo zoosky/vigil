@@ -4,6 +4,10 @@ use rusqlite::{params, Connection};
 use std::path::Path;
 use thiserror::Error;
 
+/// Current schema version - increment when adding migrations
+#[allow(dead_code)]
+const SCHEMA_VERSION: i32 = 1;
+
 #[derive(Error, Debug)]
 pub enum DbError {
     #[error("Database error: {0}")]
@@ -12,6 +16,8 @@ pub enum DbError {
     CreateDir(#[from] std::io::Error),
     #[error("JSON serialization error: {0}")]
     Json(#[from] serde_json::Error),
+    #[error("Migration error: {0}")]
+    Migration(String),
 }
 
 pub struct Database {
@@ -40,10 +46,49 @@ impl Database {
         Ok(db)
     }
 
-    /// Initialize the database schema
+    /// Initialize the database schema and run migrations
     fn init_schema(&self) -> Result<(), DbError> {
+        // Create schema version table first
         self.conn.execute_batch(
             r#"
+            CREATE TABLE IF NOT EXISTS schema_version (
+                version INTEGER PRIMARY KEY,
+                applied_at TEXT NOT NULL DEFAULT (datetime('now')),
+                description TEXT
+            );
+            "#,
+        )?;
+
+        // Check current version
+        let current_version: i32 = self
+            .conn
+            .query_row(
+                "SELECT COALESCE(MAX(version), 0) FROM schema_version",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+
+        // Apply migrations
+        if current_version < 1 {
+            self.migrate_v1()?;
+        }
+
+        // Future migrations would go here:
+        // if current_version < 2 {
+        //     self.migrate_v2()?;
+        // }
+
+        Ok(())
+    }
+
+    /// V1: Initial schema
+    fn migrate_v1(&self) -> Result<(), DbError> {
+        tracing::info!("Applying database migration v1");
+
+        self.conn.execute_batch(
+            r#"
+            -- Outage events
             CREATE TABLE IF NOT EXISTS outages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 start_time TEXT NOT NULL,
@@ -55,6 +100,7 @@ impl Database {
                 notes TEXT
             );
 
+            -- Ping log
             CREATE TABLE IF NOT EXISTS ping_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp TEXT NOT NULL,
@@ -64,6 +110,7 @@ impl Database {
                 success INTEGER NOT NULL
             );
 
+            -- Traceroute snapshots
             CREATE TABLE IF NOT EXISTS traceroutes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 outage_id INTEGER REFERENCES outages(id),
@@ -73,12 +120,32 @@ impl Database {
                 success INTEGER NOT NULL
             );
 
+            -- Indexes
             CREATE INDEX IF NOT EXISTS idx_outages_start_time ON outages(start_time);
+            CREATE INDEX IF NOT EXISTS idx_outages_end_time ON outages(end_time);
             CREATE INDEX IF NOT EXISTS idx_ping_log_timestamp ON ping_log(timestamp);
             CREATE INDEX IF NOT EXISTS idx_ping_log_target ON ping_log(target);
+            CREATE INDEX IF NOT EXISTS idx_traceroutes_outage_id ON traceroutes(outage_id);
+            CREATE INDEX IF NOT EXISTS idx_traceroutes_timestamp ON traceroutes(timestamp);
+
+            -- Record migration
+            INSERT INTO schema_version (version, description)
+            VALUES (1, 'Initial schema: outages, ping_log, traceroutes');
             "#,
         )?;
+
         Ok(())
+    }
+
+    /// Get the current schema version
+    #[allow(dead_code)]
+    pub fn schema_version(&self) -> Result<i32, DbError> {
+        let version: i32 = self.conn.query_row(
+            "SELECT COALESCE(MAX(version), 0) FROM schema_version",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(version)
     }
 
     /// Insert a new outage (returns the outage ID)

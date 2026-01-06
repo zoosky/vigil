@@ -16,16 +16,14 @@ This file provides context for Claude Code sessions working on this project.
 |---------|--------|---------|
 | 001 Core Infrastructure | Done | `config.rs`, `db.rs`, `models.rs`, `lib.rs`, `main.rs` |
 | 002 Ping Monitor | Done | `src/monitor/ping.rs` |
-| 003 Outage Detection | Pending | `src/monitor/state.rs` |
-| 004 Hop Analysis | Pending | `src/monitor/traceroute.rs` |
-| 005 CLI Reporting | Pending | `src/cli/*.rs` |
-| 006 Polish & Service | Pending | `src/cli/service.rs` (new) |
+| 003 Outage Detection | Done | `src/monitor/state.rs` |
+| 004 Hop Analysis | Done | `src/monitor/traceroute.rs` |
+| 005 CLI Reporting | Done | `src/cli/helpers.rs`, `status.rs`, `outages.rs`, `stats.rs` |
+| 006 Polish & Service | Done | `src/cli/service.rs`, log rotation in `lib.rs` |
 
 ## Implementation Order
 
-Follow feature specs sequentially: `docs/features/001-*.md` through `006-*.md`
-
-Current: **Start Feature 003 (Outage Detection)**
+All features complete!
 
 ## Key Design Decisions
 
@@ -98,12 +96,18 @@ traceroutes(id, outage_id, timestamp, target, hops, success)
 
 ## Next Steps
 
-When resuming work:
-1. Read `docs/features/002-ping-monitor.md` for spec
-2. Implement `src/monitor/ping.rs`
-3. Update `src/monitor/mod.rs` to export
-4. Add tests
-5. Mark 002 as Done in docs
+All features implemented! The tool is ready for use.
+
+To install as a service:
+```bash
+cargo build --release
+cargo run -- service install
+```
+
+Future enhancements could include:
+- Notifications (macOS native, Slack, email)
+- Web dashboard for viewing stats
+- More detailed traceroute analysis
 
 ## User's Environment
 

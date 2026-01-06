@@ -1,5 +1,7 @@
-// CLI module - to be implemented in Phase 5
-pub mod start;
-pub mod status;
+// CLI module
+pub mod helpers;
 pub mod outages;
+pub mod service;
+pub mod start;
 pub mod stats;
+pub mod status;

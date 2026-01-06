@@ -1,6 +1,6 @@
 # 003 - Outage Detection
 
-**Status:** Pending
+**Status:** Done
 
 ## Overview
 

@@ -13,3 +13,7 @@ Claude instructions:
 
 > add a ./doc directory. Inside, document all features, archtitecture and useage guides if needed. in the ./docs/features write down the plan with 001-feature-x named
   files. add a claude.md for your own usage.
+
+Ready for Feature 003 (Outage Detection) - the state machine?
+
+> yes start feature 003, but before, add a db migrations.sql if needed

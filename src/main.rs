@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
-use networkmonitor::{config::Config, detect_gateway, App};
+use networkmonitor::{config::Config, detect_gateway, monitor::PingMonitor, App};
+use tokio::signal;
 
 #[derive(Parser)]
 #[command(name = "networkmonitor")]
@@ -69,13 +70,14 @@ enum ConfigAction {
     },
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     match cli.command {
         Commands::Init => cmd_init()?,
         Commands::Config { action } => cmd_config(action)?,
-        Commands::Start { foreground } => cmd_start(foreground)?,
+        Commands::Start { foreground } => cmd_start(foreground).await?,
         Commands::Status => cmd_status()?,
         Commands::Outages { last } => cmd_outages(&last)?,
         Commands::Stats { period } => cmd_stats(&period)?,
@@ -109,7 +111,10 @@ fn cmd_init() -> Result<(), Box<dyn std::error::Error>> {
     // Detect gateway
     if let Some(gateway) = detect_gateway() {
         println!("Detected gateway: {}", gateway);
-        println!("  (Add to config with: networkmonitor config set targets.gateway {})\n", gateway);
+        println!(
+            "  (Add to config with: networkmonitor config set targets.gateway {})\n",
+            gateway
+        );
     } else {
         println!("Could not auto-detect gateway.");
         println!("  (Set manually with: networkmonitor config set targets.gateway <IP>)\n");
@@ -146,7 +151,7 @@ fn cmd_config(action: ConfigAction) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn cmd_start(_foreground: bool) -> Result<(), Box<dyn std::error::Error>> {
+async fn cmd_start(_foreground: bool) -> Result<(), Box<dyn std::error::Error>> {
     let app = App::new()?;
 
     println!("Network Monitor");
@@ -158,17 +163,82 @@ fn cmd_start(_foreground: bool) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!("\nSettings:");
-    println!("  Ping interval: {}ms", app.config.monitor.ping_interval_ms);
+    println!(
+        "  Ping interval: {}ms",
+        app.config.monitor.ping_interval_ms
+    );
     println!("  Ping timeout: {}ms", app.config.monitor.ping_timeout_ms);
-    println!("  Degraded threshold: {} failures", app.config.monitor.degraded_threshold);
-    println!("  Offline threshold: {} failures", app.config.monitor.offline_threshold);
+    println!(
+        "  Degraded threshold: {} failures",
+        app.config.monitor.degraded_threshold
+    );
+    println!(
+        "  Offline threshold: {} failures",
+        app.config.monitor.offline_threshold
+    );
 
-    println!("\n[Monitoring loop not yet implemented - Phase 2]");
-    println!("Press Ctrl+C to stop.\n");
+    println!("\nStarting monitoring... Press Ctrl+C to stop.\n");
 
-    // Placeholder for the monitoring loop
-    // Will be implemented in Phase 2
+    // Create ping monitor
+    let monitor = PingMonitor::new(&app.config);
+    let mut rx = monitor.start();
 
+    // Track consecutive results per target for display
+    let mut last_status: std::collections::HashMap<String, (bool, Option<f64>)> =
+        std::collections::HashMap::new();
+
+    loop {
+        tokio::select! {
+            // Handle Ctrl+C
+            _ = signal::ctrl_c() => {
+                println!("\n\nShutting down...");
+                break;
+            }
+
+            // Handle ping results
+            result = rx.recv() => {
+                match result {
+                    Some(ping_result) => {
+                        let status_char = if ping_result.success { "✓" } else { "✗" };
+                        let latency_str = ping_result
+                            .latency_ms
+                            .map(|l| format!("{:.1}ms", l))
+                            .unwrap_or_else(|| ping_result.error.clone().unwrap_or_else(|| "timeout".to_string()));
+
+                        // Only print if status changed or first result
+                        let key = ping_result.target.clone();
+                        let current = (ping_result.success, ping_result.latency_ms.map(|l| l.round()));
+                        let should_print = last_status.get(&key) != Some(&current);
+
+                        if should_print {
+                            let timestamp = ping_result.timestamp.format("%H:%M:%S");
+                            println!(
+                                "[{}] {} {} ({}) - {}",
+                                timestamp,
+                                status_char,
+                                ping_result.target_name,
+                                ping_result.target,
+                                latency_str
+                            );
+
+                            // Log to database
+                            if let Err(e) = app.db.insert_ping(&ping_result) {
+                                tracing::error!("Failed to log ping: {}", e);
+                            }
+
+                            last_status.insert(key, current);
+                        }
+                    }
+                    None => {
+                        // Channel closed, monitor stopped
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    println!("Monitor stopped.");
     Ok(())
 }
 

@@ -16,7 +16,7 @@ Implementation is organized into sequentially numbered features:
 | # | Feature | Status | Description |
 |---|---------|--------|-------------|
 | [001](./features/001-core-infrastructure.md) | Core Infrastructure | Done | Config, database, logging, CLI skeleton |
-| [002](./features/002-ping-monitor.md) | Ping Monitor | Pending | Continuous multi-target ping monitoring |
+| [002](./features/002-ping-monitor.md) | Ping Monitor | Done | Continuous multi-target ping monitoring |
 | [003](./features/003-outage-detection.md) | Outage Detection | Pending | State machine for connectivity tracking |
 | [004](./features/004-hop-analysis.md) | Hop Analysis | Pending | Traceroute integration for fault isolation |
 | [005](./features/005-cli-reporting.md) | CLI & Reporting | Pending | Status display, outage history, statistics |

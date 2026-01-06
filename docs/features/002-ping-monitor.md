@@ -1,6 +1,6 @@
 # 002 - Ping Monitor
 
-**Status:** Pending
+**Status:** Done
 
 ## Overview
 

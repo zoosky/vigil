@@ -17,3 +17,11 @@ Claude instructions:
 Ready for Feature 003 (Outage Detection) - the state machine?
 
 > yes start feature 003, but before, add a db migrations.sql if needed
+
+### 2026-01-07
+
+> review features in @docs/issues and propose 3 relevant new ones according to best practices in network monitoring
+
+> add rust CI pipeline
+
+

@@ -6,7 +6,9 @@ const PLIST_LABEL: &str = "ch.kapptec.vigil";
 /// Get the path to the launchd plist file
 fn plist_path() -> Result<PathBuf, Box<dyn std::error::Error>> {
     let home = dirs::home_dir().ok_or("Could not determine home directory")?;
-    Ok(home.join("Library/LaunchAgents").join(format!("{}.plist", PLIST_LABEL)))
+    Ok(home
+        .join("Library/LaunchAgents")
+        .join(format!("{}.plist", PLIST_LABEL)))
 }
 
 /// Get the path to the installed binary
@@ -149,9 +151,7 @@ pub fn status() -> Result<(), Box<dyn std::error::Error>> {
     println!("  Plist: {}", plist.display());
 
     // Check if service is running via launchctl
-    let output = Command::new("launchctl")
-        .args(["list"])
-        .output()?;
+    let output = Command::new("launchctl").args(["list"]).output()?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let is_running = stdout.lines().any(|line| line.contains(PLIST_LABEL));

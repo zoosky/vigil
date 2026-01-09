@@ -51,7 +51,10 @@ pub async fn run(app: &App) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(outage) = app.db.get_ongoing_outage()? {
         let duration = (Utc::now() - outage.start_time).num_seconds() as f64;
         println!("\n⚠️  ONGOING OUTAGE:");
-        println!("  Started: {}", outage.start_time.format("%Y-%m-%d %H:%M:%S"));
+        println!(
+            "  Started: {}",
+            outage.start_time.format("%Y-%m-%d %H:%M:%S")
+        );
         println!("  Duration: {}", format_duration_secs(duration));
         if let Some(hop) = outage.failing_hop {
             let hop_ip = outage.failing_hop_ip.as_deref().unwrap_or("unknown");

@@ -35,7 +35,28 @@ git status --porcelain
 
 ## Main Flow
 
-### 3. Gather Information
+### 3. Run Local QA Checks
+
+**CRITICAL: Always run QA checks before pushing to catch issues early.**
+
+```bash
+./scripts/qa.sh
+```
+
+This script runs:
+- `cargo fmt --all -- --check` (formatting)
+- `cargo clippy --all-targets -- -D warnings` (lints)
+- `cargo test` (tests)
+- `cargo doc --no-deps` (documentation)
+- `cargo build --release` (release build)
+
+**If any check fails:**
+- Run `./scripts/qa.sh --fix` to auto-fix formatting
+- Fix other issues manually before proceeding
+
+**Only proceed to push after all checks pass.**
+
+### 4. Gather Information
 
 Run these commands to understand the current state:
 
@@ -53,14 +74,14 @@ git log main..HEAD --oneline 2>/dev/null || git log master..HEAD --oneline
 git diff main --stat 2>/dev/null || git diff master --stat
 ```
 
-### 4. Analyze Changes
+### 5. Analyze Changes
 
 Based on the commits and diff:
 - Identify the type of change (feature, fix, refactor, docs, etc.)
 - List the key modifications
 - Note any breaking changes
 
-### 5. Push to Remote
+### 6. Push to Remote
 
 Push the branch to remote (required for PR):
 
@@ -68,7 +89,7 @@ Push the branch to remote (required for PR):
 git push -u origin $(git branch --show-current)
 ```
 
-### 6. Create the Pull Request
+### 7. Create the Pull Request
 
 Use `gh pr create` with a well-formatted title and body.
 
@@ -90,7 +111,7 @@ EOF
 )"
 ```
 
-### 7. Report the Result
+### 8. Report the Result
 
 After creating the PR, display:
 - The PR URL (clickable)

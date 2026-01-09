@@ -1,8 +1,8 @@
+pub mod cli;
 pub mod config;
 pub mod db;
 pub mod models;
 pub mod monitor;
-pub mod cli;
 
 use config::Config;
 use std::path::Path;
@@ -11,8 +11,8 @@ use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 /// Initialize the logging framework with daily log rotation
 pub fn init_logging(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(&config.logging.level));
+    let filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&config.logging.level));
 
     let subscriber = tracing_subscriber::registry().with(filter);
 
@@ -29,21 +29,14 @@ pub fn init_logging(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
             std::fs::create_dir_all(log_dir)?;
 
             // Use daily rotation - creates files like monitor.2024-01-15.log
-            let file_appender = RollingFileAppender::new(
-                Rotation::DAILY,
-                log_dir,
-                "monitor.log",
-            );
+            let file_appender = RollingFileAppender::new(Rotation::DAILY, log_dir, "monitor.log");
 
             let file_layer = fmt::layer()
                 .with_target(true)
                 .with_ansi(false)
                 .with_writer(file_appender);
 
-            subscriber
-                .with(console_layer)
-                .with(file_layer)
-                .init();
+            subscriber.with(console_layer).with(file_layer).init();
         } else {
             subscriber.with(console_layer).init();
         }
@@ -55,7 +48,10 @@ pub fn init_logging(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Clean up old log files older than max_age_days
-pub fn cleanup_old_logs(log_dir: &Path, max_age_days: u32) -> Result<usize, Box<dyn std::error::Error>> {
+pub fn cleanup_old_logs(
+    log_dir: &Path,
+    max_age_days: u32,
+) -> Result<usize, Box<dyn std::error::Error>> {
     use std::time::Duration;
 
     let mut deleted = 0;
@@ -66,7 +62,7 @@ pub fn cleanup_old_logs(log_dir: &Path, max_age_days: u32) -> Result<usize, Box<
         let path = entry.path();
 
         // Only process log files
-        if !path.extension().map_or(false, |ext| ext == "log") {
+        if path.extension().is_none_or(|ext| ext != "log") {
             continue;
         }
 
@@ -74,11 +70,9 @@ pub fn cleanup_old_logs(log_dir: &Path, max_age_days: u32) -> Result<usize, Box<
         if let Ok(metadata) = entry.metadata() {
             if let Ok(modified) = metadata.modified() {
                 if let Ok(age) = modified.elapsed() {
-                    if age > max_age {
-                        if std::fs::remove_file(&path).is_ok() {
-                            tracing::info!("Removed old log file: {:?}", path);
-                            deleted += 1;
-                        }
+                    if age > max_age && std::fs::remove_file(&path).is_ok() {
+                        tracing::info!("Removed old log file: {:?}", path);
+                        deleted += 1;
                     }
                 }
             }
@@ -133,9 +127,7 @@ pub fn detect_gateway() -> Option<String> {
     for line in stdout.lines() {
         let line = line.trim();
         if line.starts_with("gateway:") {
-            return line
-                .strip_prefix("gateway:")
-                .map(|s| s.trim().to_string());
+            return line.strip_prefix("gateway:").map(|s| s.trim().to_string());
         }
     }
 

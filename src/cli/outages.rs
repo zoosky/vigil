@@ -21,8 +21,8 @@ pub fn run(app: &App, last: &str) -> Result<(), Box<dyn std::error::Error>> {
 
     // Print table header
     println!(
-        "{:<19}  {:>8}  {:>12}  {}",
-        "Start Time", "Duration", "Failing Hop", "Affected Targets"
+        "{:<19}  {:>8}  {:>12}  Affected Targets",
+        "Start Time", "Duration", "Failing Hop"
     );
     println!("{}", "─".repeat(65));
 

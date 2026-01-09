@@ -44,7 +44,11 @@ pub fn run(app: &App, period: &str) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Find longest outage
-    if let Some(longest) = outages.iter().filter_map(|o| o.duration_secs).max_by(|a, b| a.partial_cmp(b).unwrap()) {
+    if let Some(longest) = outages
+        .iter()
+        .filter_map(|o| o.duration_secs)
+        .max_by(|a, b| a.partial_cmp(b).unwrap())
+    {
         println!("  Longest: {}", format_duration_secs(longest));
     }
 

@@ -102,19 +102,20 @@ CREATE TABLE traceroutes (
 ## CLI Commands (Skeleton)
 
 ```bash
-networkmonitor init          # Initialize config + DB
-networkmonitor start         # Start monitoring (placeholder)
-networkmonitor status        # Show status (placeholder)
-networkmonitor outages       # List outages (placeholder)
-networkmonitor stats         # Show statistics (placeholder)
-networkmonitor trace         # Manual traceroute (placeholder)
-networkmonitor config show   # Display config
-networkmonitor config path   # Show config file path
+vigil init          # Initialize config + DB
+vigil start         # Start monitoring (placeholder)
+vigil status        # Show status (placeholder)
+vigil outages       # List outages (placeholder)
+vigil stats         # Show statistics (placeholder)
+vigil trace         # Manual traceroute (placeholder)
+vigil config show   # Display config
+vigil config path   # Show config file path
 ```
 
 ## Tests
 
 7 unit tests passing:
+
 - `config::tests::test_default_config`
 - `config::tests::test_parse_config`
 - `db::tests::test_create_database`

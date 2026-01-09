@@ -18,7 +18,7 @@ Final polish including launchd service integration, graceful shutdown, log rotat
 
 ### Plist File
 
-Create `~/Library/LaunchAgents/com.kapptec.networkmonitor.plist`:
+Create `~/Library/LaunchAgents/ch.kapptec.vigil.plist`:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -26,11 +26,11 @@ Create `~/Library/LaunchAgents/com.kapptec.networkmonitor.plist`:
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.kapptec.networkmonitor</string>
+    <string>ch.kapptec.vigil</string>
 
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/local/bin/networkmonitor</string>
+        <string>/usr/local/bin/vigil</string>
         <string>start</string>
         <string>--foreground</string>
     </array>
@@ -42,10 +42,10 @@ Create `~/Library/LaunchAgents/com.kapptec.networkmonitor.plist`:
     <true/>
 
     <key>StandardOutPath</key>
-    <string>/tmp/networkmonitor.out.log</string>
+    <string>/tmp/vigil.out.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/tmp/networkmonitor.err.log</string>
+    <string>/tmp/vigil.err.log</string>
 
     <key>EnvironmentVariables</key>
     <dict>
@@ -60,16 +60,16 @@ Create `~/Library/LaunchAgents/com.kapptec.networkmonitor.plist`:
 
 ```bash
 # Install service
-networkmonitor service install
+vigil service install
 
 # Uninstall service
-networkmonitor service uninstall
+vigil service uninstall
 
 # Check service status
-networkmonitor service status
+vigil service status
 
 # View service logs
-networkmonitor service logs
+vigil service logs
 ```
 
 ## Implementation
@@ -80,7 +80,7 @@ networkmonitor service logs
 pub fn install() -> Result<()> {
     let plist_path = dirs::home_dir()
         .unwrap()
-        .join("Library/LaunchAgents/com.kapptec.networkmonitor.plist");
+        .join("Library/LaunchAgents/ch.kapptec.vigil.plist");
 
     // Generate plist content
     let plist = generate_plist()?;
@@ -253,11 +253,11 @@ struct PingAggregator {
 
 ```bash
 # Test service installation
-networkmonitor service install
-launchctl list | grep networkmonitor
+vigil service install
+launchctl list | grep vigil
 
 # Test graceful shutdown
-networkmonitor start --foreground
+vigil start --foreground
 # Press Ctrl+C, verify clean shutdown message
 
 # Test log rotation
@@ -272,7 +272,7 @@ networkmonitor start --foreground
 ```bash
 # Monitor memory over 24 hours
 while true; do
-    ps aux | grep networkmonitor | grep -v grep
+    ps aux | grep vigil | grep -v grep
     sleep 3600
 done
 ```

@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use networkmonitor::{
+use vigil::{
     cli,
     config::Config,
     detect_gateway,
@@ -10,8 +10,8 @@ use networkmonitor::{
 use tokio::signal;
 
 #[derive(Parser)]
-#[command(name = "networkmonitor")]
-#[command(author, version, about = "Network connectivity monitor for diagnosing intermittent outages")]
+#[command(name = "vigil")]
+#[command(author, version, about = "Keep watch over your network - monitor connectivity and diagnose intermittent outages")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -157,12 +157,12 @@ fn cmd_init() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(gateway) = detect_gateway() {
         println!("Detected gateway: {}", gateway);
         println!(
-            "  (Add to config with: networkmonitor config set targets.gateway {})\n",
+            "  (Add to config with: vigil config set targets.gateway {})\n",
             gateway
         );
     } else {
         println!("Could not auto-detect gateway.");
-        println!("  (Set manually with: networkmonitor config set targets.gateway <IP>)\n");
+        println!("  (Set manually with: vigil config set targets.gateway <IP>)\n");
     }
 
     println!("Targets to monitor:");
@@ -170,7 +170,7 @@ fn cmd_init() -> Result<(), Box<dyn std::error::Error>> {
         println!("  - {} ({})", target.name, target.ip);
     }
 
-    println!("\nRun 'networkmonitor start' to begin monitoring.");
+    println!("\nRun 'vigil start' to begin monitoring.");
 
     Ok(())
 }
@@ -435,7 +435,7 @@ fn cmd_cleanup(days: Option<u32>) -> Result<(), Box<dyn std::error::Error>> {
     // Clean up old log files
     if let Ok(Some(log_path)) = app.config.log_path() {
         if let Some(log_dir) = log_path.parent() {
-            match networkmonitor::cleanup_old_logs(log_dir, retention_days) {
+            match vigil::cleanup_old_logs(log_dir, retention_days) {
                 Ok(deleted_logs) => {
                     if deleted_logs > 0 {
                         println!("Logs: Deleted {} old log files", deleted_logs);

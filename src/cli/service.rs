@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::process::Command;
 
-const PLIST_LABEL: &str = "com.kapptec.networkmonitor";
+const PLIST_LABEL: &str = "ch.kapptec.vigil";
 
 /// Get the path to the launchd plist file
 fn plist_path() -> Result<PathBuf, Box<dyn std::error::Error>> {
@@ -12,7 +12,7 @@ fn plist_path() -> Result<PathBuf, Box<dyn std::error::Error>> {
 /// Get the path to the installed binary
 fn binary_path() -> Result<PathBuf, Box<dyn std::error::Error>> {
     // Use the current executable path, or fall back to expected install location
-    std::env::current_exe().or_else(|_| Ok(PathBuf::from("/usr/local/bin/networkmonitor")))
+    std::env::current_exe().or_else(|_| Ok(PathBuf::from("/usr/local/bin/vigil")))
 }
 
 /// Generate the launchd plist content
@@ -42,10 +42,10 @@ fn generate_plist() -> Result<String, Box<dyn std::error::Error>> {
     <true/>
 
     <key>StandardOutPath</key>
-    <string>/tmp/networkmonitor.out.log</string>
+    <string>/tmp/vigil.out.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/tmp/networkmonitor.err.log</string>
+    <string>/tmp/vigil.err.log</string>
 
     <key>EnvironmentVariables</key>
     <dict>
@@ -67,7 +67,7 @@ pub fn install() -> Result<(), Box<dyn std::error::Error>> {
     if plist.exists() {
         println!("Service is already installed at:");
         println!("  {}", plist.display());
-        println!("\nTo reinstall, first run: networkmonitor service uninstall");
+        println!("\nTo reinstall, first run: vigil service uninstall");
         return Ok(());
     }
 
@@ -93,9 +93,9 @@ pub fn install() -> Result<(), Box<dyn std::error::Error>> {
         println!("\nThe monitor will now:");
         println!("  - Start automatically on login");
         println!("  - Restart if it crashes");
-        println!("  - Log output to /tmp/networkmonitor.*.log");
-        println!("\nTo check status: networkmonitor service status");
-        println!("To view logs:    networkmonitor service logs");
+        println!("  - Log output to /tmp/vigil.*.log");
+        println!("\nTo check status: vigil service status");
+        println!("To view logs:    vigil service logs");
     } else {
         println!("Warning: launchctl load failed. Try manually:");
         println!("  launchctl load {}", plist.display());
@@ -141,7 +141,7 @@ pub fn status() -> Result<(), Box<dyn std::error::Error>> {
     // Check if plist exists
     if !plist.exists() {
         println!("Installed: No");
-        println!("\nTo install: networkmonitor service install");
+        println!("\nTo install: vigil service install");
         return Ok(());
     }
 
@@ -178,8 +178,8 @@ pub fn status() -> Result<(), Box<dyn std::error::Error>> {
 
     // Check log files
     println!("\nLog files:");
-    let stdout_log = PathBuf::from("/tmp/networkmonitor.out.log");
-    let stderr_log = PathBuf::from("/tmp/networkmonitor.err.log");
+    let stdout_log = PathBuf::from("/tmp/vigil.out.log");
+    let stderr_log = PathBuf::from("/tmp/vigil.err.log");
 
     if stdout_log.exists() {
         let meta = std::fs::metadata(&stdout_log)?;
@@ -200,8 +200,8 @@ pub fn status() -> Result<(), Box<dyn std::error::Error>> {
 
 /// View service logs
 pub fn logs(lines: usize, follow: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let stdout_log = PathBuf::from("/tmp/networkmonitor.out.log");
-    let stderr_log = PathBuf::from("/tmp/networkmonitor.err.log");
+    let stdout_log = PathBuf::from("/tmp/vigil.out.log");
+    let stderr_log = PathBuf::from("/tmp/vigil.err.log");
 
     if !stdout_log.exists() && !stderr_log.exists() {
         println!("No log files found. Is the service running?");
@@ -263,7 +263,7 @@ mod tests {
     #[test]
     fn test_generate_plist() {
         let plist = generate_plist().unwrap();
-        assert!(plist.contains("com.kapptec.networkmonitor"));
+        assert!(plist.contains("ch.kapptec.vigil"));
         assert!(plist.contains("RunAtLoad"));
         assert!(plist.contains("KeepAlive"));
         assert!(plist.contains("--foreground"));

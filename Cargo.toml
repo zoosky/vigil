@@ -1,9 +1,9 @@
 [package]
-name = "networkmonitor"
+name = "vigil"
 version = "0.1.0"
 edition = "2021"
-description = "Network connectivity monitor for diagnosing intermittent outages"
-authors = ["Andreas"]
+description = "Keep watch over your network - monitor connectivity and diagnose intermittent outages"
+authors = ["Zoo Sky"]
 license = "MIT"
 
 [dependencies]
@@ -28,5 +28,5 @@ futures = "0.3"
 tempfile = "3"
 
 [[bin]]
-name = "networkmonitor"
+name = "vigil"
 path = "src/main.rs"

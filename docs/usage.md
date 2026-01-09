@@ -6,21 +6,22 @@
 # Build from source
 cargo build --release
 
-# Binary will be at target/release/networkmonitor
+# Binary will be at target/release/vigil
 # Optionally copy to PATH
-cp target/release/networkmonitor /usr/local/bin/
+cp target/release/vigil /usr/local/bin/
 ```
 
 ## Initial Setup
 
 ```bash
 # Initialize configuration and database
-networkmonitor init
+vigil init
 ```
 
 This will:
-1. Create config file at `~/Library/Application Support/com.kapptec.networkmonitor/config.toml`
-2. Create SQLite database at `~/Library/Application Support/com.kapptec.networkmonitor/monitor.db`
+
+1. Create config file at `~/Library/Application Support/ch.kapptec.vigil/config.toml`
+2. Create SQLite database at `~/Library/Application Support/ch.kapptec.vigil/monitor.db`
 3. Auto-detect your gateway IP
 4. Show default monitoring targets
 
@@ -29,14 +30,14 @@ This will:
 ### View Current Config
 
 ```bash
-networkmonitor config show
+vigil config show
 ```
 
 ### Config File Location
 
 ```bash
-networkmonitor config path
-# Output: /Users/you/Library/Application Support/com.kapptec.networkmonitor/config.toml
+vigil config path
+# Output: /Users/you/Library/Application Support/ch.kapptec.vigil/config.toml
 ```
 
 ### Edit Configuration
@@ -79,10 +80,10 @@ level = "info"               # trace, debug, info, warn, error
 
 ```bash
 # Run in foreground
-networkmonitor start --foreground
+vigil start --foreground
 
 # Run as daemon (background)
-networkmonitor start
+vigil start
 ```
 
 Press `Ctrl+C` to stop when running in foreground.
@@ -90,10 +91,11 @@ Press `Ctrl+C` to stop when running in foreground.
 ### Check Status
 
 ```bash
-networkmonitor status
+vigil status
 ```
 
 Shows:
+
 - Current connectivity state (ONLINE/DEGRADED/OFFLINE)
 - Time since last outage
 - Current latency to each target
@@ -103,26 +105,27 @@ Shows:
 
 ```bash
 # Last 24 hours (default)
-networkmonitor outages
+vigil outages
 
 # Last 7 days
-networkmonitor outages --last 7d
+vigil outages --last 7d
 
 # Last 30 days
-networkmonitor outages --last 30d
+vigil outages --last 30d
 ```
 
 ### View Statistics
 
 ```bash
 # Last 24 hours
-networkmonitor stats
+vigil stats
 
 # Last week
-networkmonitor stats --period 7d
+vigil stats --period 7d
 ```
 
 Shows:
+
 - Total outages
 - Total downtime
 - Availability percentage
@@ -133,10 +136,10 @@ Shows:
 
 ```bash
 # Default target (8.8.8.8)
-networkmonitor trace
+vigil trace
 
 # Custom target
-networkmonitor trace 1.1.1.1
+vigil trace 1.1.1.1
 ```
 
 ## Understanding Output
@@ -187,6 +190,7 @@ To run automatically at login, create a launchd plist:
 ### "Permission denied" on ping
 
 macOS ping should work without elevated privileges. If issues occur:
+
 ```bash
 # Check ping works directly
 ping -c 1 8.8.8.8
@@ -195,13 +199,15 @@ ping -c 1 8.8.8.8
 ### Database locked
 
 Only one instance should run at a time. Check for existing processes:
+
 ```bash
-pgrep networkmonitor
+pgrep vigil
 ```
 
 ### High latency reported
 
 Latency spikes during outages are normal. Persistent high latency when online may indicate:
+
 - Network congestion
 - WiFi interference
 - Overloaded router
@@ -209,11 +215,13 @@ Latency spikes during outages are normal. Persistent high latency when online ma
 ### Log file location
 
 Logs are written to:
+
 ```
-~/Library/Application Support/com.kapptec.networkmonitor/monitor.log
+~/Library/Application Support/ch.kapptec.vigil/monitor.log
 ```
 
 View with:
+
 ```bash
-tail -f "~/Library/Application Support/com.kapptec.networkmonitor/monitor.log"
+tail -f "~/Library/Application Support/ch.kapptec.vigil/monitor.log"
 ```

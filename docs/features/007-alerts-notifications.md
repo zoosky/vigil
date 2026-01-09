@@ -41,6 +41,7 @@ For integration with Slack, Discord, PagerDuty, or custom services:
 ```
 
 Recovery notification:
+
 ```json
 {
   "event": "recovered",
@@ -240,13 +241,13 @@ fn test_rate_limiting() {
 
 ```bash
 # Test desktop notification
-networkmonitor test-notify desktop "Test message"
+vigil test-notify desktop "Test message"
 
 # Test webhook (with httpbin or similar)
-networkmonitor test-notify webhook
+vigil test-notify webhook
 
 # Test command execution
-networkmonitor test-notify command
+vigil test-notify command
 ```
 
 ## Error Handling

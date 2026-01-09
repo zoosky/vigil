@@ -25,7 +25,7 @@
 The tool monitors connectivity across multiple network hops:
 
 ```
-[This Machine] → [Local Gateway] → [Zyxel Router] → [ISP] → [Internet]
+[This Machine] → [Local Gateway] → [Home Router] → [ISP] → [Internet]
      hop 0           hop 1            hop 2         hop 3+    target
 ```
 

@@ -45,7 +45,7 @@ Recent Outages (last 24 hours)
 │ Start Time          │ Duration │ Failing Hop │ Affected Targets  │
 ├─────────────────────┼──────────┼─────────────┼───────────────────┤
 │ 2024-01-15 14:23:05 │ 12s      │ 3 (ISP)     │ 8.8.8.8, 1.1.1.1  │
-│ 2024-01-15 09:45:32 │ 45s      │ 2 (Zyxel)   │ All targets       │
+│ 2024-01-15 09:45:32 │ 45s      │ 2 myrouter  │ All targets       │
 │ 2024-01-15 03:12:18 │ 8s       │ 3 (ISP)     │ 8.8.8.8, 1.1.1.1  │
 └─────────────────────┴──────────┴─────────────┴───────────────────┘
 
@@ -71,7 +71,7 @@ Outages:
   Longest: 45s
 
 Failing Hop Analysis:
-  Hop 2 (Zyxel Router): 1 outage (45s total)
+  Hop 2 (Home Router): 1 outage (45s total)
   Hop 3 (ISP):          2 outages (20s total)
 
 Time Distribution:

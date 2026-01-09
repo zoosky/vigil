@@ -40,4 +40,4 @@ networkmonitor outages --last 24h
 
 ## Problem Statement
 
-Home network with WLAN/ETH connection through a Zyxel fiber router experiences intermittent outages (1-60 seconds) multiple times daily. This tool monitors connectivity continuously and identifies which network hop is responsible for the failures.
+Home network with WLAN/ETH connection through a fiber router experiences intermittent outages (1-60 seconds) multiple times daily. This tool monitors connectivity continuously and identifies which network hop is responsible for the failures.

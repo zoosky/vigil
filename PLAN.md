@@ -8,7 +8,7 @@ Home network with WLAN/ETH connection through a fiber router experiences intermi
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                     Network Monitor                             │
+│                     Vigil Network Monitor                       │
 ├─────────────────────────────────────────────────────────────────┤
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐   │
 │  │ Ping Monitor │  │ Hop Analyzer │  │ Outage Detector      │   │
@@ -118,55 +118,60 @@ CREATE TABLE traceroutes (
 
 ```bash
 # Start monitoring daemon
-networkmonitor start
+vigil start
 
 # Check current status
-networkmonitor status
+vigil status
 
 # View recent outages
-networkmonitor outages [--last 24h | --last 7d | --since "2024-01-01"]
+vigil outages [--last 24h | --last 7d | --since "2024-01-01"]
 
 # View statistics
-networkmonitor stats
+vigil stats
 
 # Run manual traceroute
-networkmonitor trace [target]
+vigil trace [target]
 
 # Export logs
-networkmonitor export --format csv --output outages.csv
+vigil export --format csv --output outages.csv
 
 # Configuration
-networkmonitor config --set ping_interval=1000
-networkmonitor config --add-target 8.8.4.4
+vigil config --set ping_interval=1000
+vigil config --add-target 8.8.4.4
 ```
 
 ## Implementation Steps
 
 ### Phase 1: Core Infrastructure
+
 - [ ] Project setup with Cargo workspace structure
 - [ ] Configuration management (TOML file + CLI overrides)
 - [ ] SQLite database setup with migrations
 - [ ] Logging framework (tracing crate)
 
 ### Phase 2: Ping Monitor
+
 - [ ] Implement ping using `ping` shell command (macOS)
 - [ ] Parse ping output for latency/success
 - [ ] Multi-target concurrent pinging with tokio
 - [ ] Configurable intervals and timeouts
 
 ### Phase 3: Outage Detection
+
 - [ ] State machine implementation
 - [ ] Threshold configuration
 - [ ] Event emission on state transitions
 - [ ] Outage duration tracking
 
 ### Phase 4: Hop Analysis
+
 - [ ] Implement traceroute shell-out
 - [ ] Parse traceroute output
 - [ ] Identify failing hop logic
 - [ ] Store traceroute snapshots
 
 ### Phase 5: CLI & Reporting
+
 - [ ] CLI argument parsing (clap)
 - [ ] Status display
 - [ ] Outage history with filtering
@@ -174,6 +179,7 @@ networkmonitor config --add-target 8.8.4.4
 - [ ] CSV/JSON export
 
 ### Phase 6: Polish
+
 - [ ] Graceful shutdown handling
 - [ ] Launchd service file for macOS
 - [ ] Log rotation
@@ -200,7 +206,7 @@ indicatif = "0.17"                 # Progress bars
 
 ## Configuration File
 
-Location: `~/.config/networkmonitor/config.toml`
+Location: `~/.config/vigil/config.toml`
 
 ```toml
 [monitor]
@@ -218,12 +224,12 @@ targets = [
 ]
 
 [database]
-path = "~/.local/share/networkmonitor/monitor.db"
+path = "~/.local/share/vigil/monitor.db"
 retention_days = 90
 
 [logging]
 level = "info"
-file = "~/.local/share/networkmonitor/monitor.log"
+file = "~/.local/share/vigil/monitor.log"
 ```
 
 ## macOS Shell Commands Used
@@ -246,8 +252,9 @@ ifconfig en0
 ## Output Examples
 
 ### Status Command
+
 ```
-$ networkmonitor status
+$ vigil status
 
 Network Monitor Status
 ══════════════════════════════════════════════════════════
@@ -267,8 +274,9 @@ Today's Statistics:
 ```
 
 ### Outages Command
+
 ```
-$ networkmonitor outages --last 24h
+$ vigil outages --last 24h
 
 Recent Outages (last 24 hours)
 ══════════════════════════════════════════════════════════
@@ -288,7 +296,7 @@ Most common failing hop: Hop 3 (ISP gateway) - 2 occurrences
 ## File Structure
 
 ```
-my-networkmonitor/
+vigil/
 ├── Cargo.toml
 ├── PLAN.md
 ├── src/

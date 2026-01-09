@@ -41,6 +41,7 @@ traceroute -n -q 1 -w 2 8.8.8.8
 ```
 
 **Sample output:**
+
 ```
 traceroute to 8.8.8.8 (8.8.8.8), 64 hops max, 52 byte packets
  1  192.168.1.1  1.234 ms
@@ -53,11 +54,13 @@ traceroute to 8.8.8.8 (8.8.8.8), 64 hops max, 52 byte packets
 ### Parsing Strategy
 
 Each line follows pattern:
+
 ```
 <hop_number>  <ip_or_*>  <latency_ms>
 ```
 
 Parse into:
+
 ```rust
 pub struct TracerouteHop {
     pub hop_number: u8,
@@ -89,12 +92,14 @@ fn identify_failing_hop(result: &TracerouteResult) -> Option<(u8, String)> {
 ```
 
 **Example:**
+
 ```
 1  192.168.1.1  1.234 ms   ← Hop 1 responded
 2  10.0.0.1    5.678 ms    ← Hop 2 responded (last responding)
 3  * * *                    ← Hop 3 timeout
 4  * * *                    ← Hop 4 timeout
 ```
+
 Result: Failing hop = 2 (10.0.0.1), meaning hop 3 is unreachable.
 
 ## Tasks
@@ -104,7 +109,7 @@ Result: Failing hop = 2 (10.0.0.1), meaning hop 3 is unreachable.
 - [ ] Handle various output formats
 - [ ] Implement `identify_failing_hop()`
 - [ ] Integrate with outage detection (Feature 003)
-- [ ] Implement `networkmonitor trace` CLI command
+- [ ] Implement `vigil trace` CLI command
 - [ ] Store traceroute results in database
 - [ ] Add unit tests with sample outputs
 
@@ -172,7 +177,7 @@ async fn test_trace_localhost() {
 ### Manual Traceroute Command
 
 ```bash
-$ networkmonitor trace 8.8.8.8
+$ vigil trace 8.8.8.8
 
 Traceroute to 8.8.8.8
 ═══════════════════════════════════════════════════════════

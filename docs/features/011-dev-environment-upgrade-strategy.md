@@ -9,15 +9,16 @@ Current development workflow has critical issues:
 1. **No environment separation** - Running `cargo run` uses the same config/database as production, risking data corruption or interfering with ongoing monitoring
 2. **No version tracking** - Database schema changes require manual migration; no way to detect version mismatch
 3. **Risky upgrades** - No strategy for upgrading a running monitor service without data loss
-4. **Single data path** - Hardcoded `~/Library/Application Support/com.kapptec.networkmonitor/` for all environments
+4. **Single data path** - Hardcoded `~/Library/Application Support/ch.kapptec.vigil/` for all environments
 
 **Current state:**
-```bash
-$ networkmonitor config path
-/Users/andreas/Library/Application Support/com.kapptec.networkmonitor/config.toml
 
-$ networkmonitor stats -p 7d
-INFO Database opened at "/Users/andreas/Library/Application Support/com.kapptec.networkmonitor/monitor.db"
+```bash
+$ vigil config path
+/Users/andreas/Library/Application Support/ch.kapptec.vigil/config.toml
+
+$ vigil stats -p 7d
+INFO Database opened at "/Users/andreas/Library/Application Support/ch.kapptec.vigil/monitor.db"
 # ^ Development runs hit the same database as production service
 ```
 
@@ -92,9 +93,9 @@ pub enum Environment {
 }
 
 impl Environment {
-    /// Determine environment from NETWORKMONITOR_ENV or default
+    /// Determine environment from vigil_ENV or default
     pub fn from_env() -> Self {
-        match std::env::var("NETWORKMONITOR_ENV").as_deref() {
+        match std::env::var("vigil_ENV").as_deref() {
             Ok("development") | Ok("dev") => Environment::Development,
             Ok("test") => Environment::Test,
             _ => Environment::Production,
@@ -105,7 +106,7 @@ impl Environment {
     pub fn data_dir(&self) -> PathBuf {
         let base = dirs::data_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join("com.kapptec.networkmonitor");
+            .join("ch.kapptec.vigil");
 
         match self {
             Environment::Production => base,
@@ -131,7 +132,7 @@ impl Environment {
 **Directory structure:**
 
 ```
-~/Library/Application Support/com.kapptec.networkmonitor/
+~/Library/Application Support/ch.kapptec.vigil/
 ├── config.toml          # Production config
 ├── monitor.db           # Production database
 ├── monitor.log          # Production logs
@@ -152,11 +153,11 @@ Add global flag and environment display:
 
 ```rust
 #[derive(Parser)]
-#[command(name = "networkmonitor")]
+#[command(name = "vigil")]
 #[command(version = VERSION)]
 struct Cli {
     /// Environment: production, development, test
-    #[arg(long, short = 'e', global = true, env = "NETWORKMONITOR_ENV")]
+    #[arg(long, short = 'e', global = true, env = "vigil_ENV")]
     env: Option<String>,
 
     /// Use development environment (shorthand for --env=development)
@@ -185,20 +186,20 @@ impl Cli {
 
 ```bash
 # Production (default)
-$ networkmonitor start
+$ vigil start
 
 # Development via flag
-$ networkmonitor --dev start
-$ networkmonitor -e dev start
+$ vigil --dev start
+$ vigil -e dev start
 
 # Development via environment variable
-$ NETWORKMONITOR_ENV=dev cargo run -- start
+$ vigil_ENV=dev cargo run -- start
 
 # Show current environment
-$ networkmonitor --dev config path
+$ vigil --dev config path
 Environment: development
-Config: /Users/andreas/Library/Application Support/com.kapptec.networkmonitor/dev/config.toml
-Database: /Users/andreas/Library/Application Support/com.kapptec.networkmonitor/dev/monitor.db
+Config: /Users/andreas/Library/Application Support/ch.kapptec.vigil/dev/config.toml
+Database: /Users/andreas/Library/Application Support/ch.kapptec.vigil/dev/monitor.db
 ```
 
 ### 4. Version Command
@@ -207,7 +208,7 @@ Database: /Users/andreas/Library/Application Support/com.kapptec.networkmonitor/
 
 ```rust
 pub fn run(app: &App, verbose: bool) -> Result<()> {
-    println!("networkmonitor {}", VERSION);
+    println!("vigil {}", VERSION);
 
     if verbose {
         println!();
@@ -234,15 +235,15 @@ pub fn run(app: &App, verbose: bool) -> Result<()> {
 **Usage:**
 
 ```bash
-$ networkmonitor version
-networkmonitor 0.1.0
+$ vigil version
+vigil 0.1.0
 
-$ networkmonitor version -v
-networkmonitor 0.1.0
+$ vigil version -v
+vigil 0.1.0
 
 Environment:     production
-Config:          /Users/andreas/Library/Application Support/com.kapptec.networkmonitor/config.toml
-Database:        /Users/andreas/Library/Application Support/com.kapptec.networkmonitor/monitor.db
+Config:          /Users/andreas/Library/Application Support/ch.kapptec.vigil/config.toml
+Database:        /Users/andreas/Library/Application Support/ch.kapptec.vigil/monitor.db
 
 Schema version:  1 (current: 1)
 Status:          Up to date
@@ -347,7 +348,7 @@ pub fn run(app: &mut App, args: &UpgradeArgs) -> Result<()> {
     if !args.force && is_service_running()? {
         return Err(anyhow!(
             "Monitor service is running. Stop it first with:\n\
-             $ networkmonitor service stop\n\n\
+             $ vigil service stop\n\n\
              Or use --force to upgrade anyway (may cause issues)"
         ));
     }
@@ -400,7 +401,7 @@ fn create_backup(db_path: &Path) -> Result<PathBuf> {
 
 fn is_service_running() -> Result<bool> {
     let output = Command::new("launchctl")
-        .args(["list", "com.kapptec.networkmonitor"])
+        .args(["list", "ch.kapptec.vigil"])
         .output()?;
     Ok(output.status.success())
 }
@@ -410,7 +411,7 @@ fn is_service_running() -> Result<bool> {
 
 ```bash
 # Check what would be upgraded
-$ networkmonitor upgrade --dry-run
+$ vigil upgrade --dry-run
 Current schema version: 1
 Target schema version:  2
 
@@ -418,7 +419,7 @@ Migrations that would be applied:
   - v2: Add degraded_events and traceroute columns
 
 # Perform upgrade (creates backup automatically)
-$ networkmonitor upgrade
+$ vigil upgrade
 Current schema version: 1
 Target schema version:  2
 Backup created: /Users/andreas/.../monitor.db.backup_20240115_143022
@@ -431,9 +432,9 @@ Upgrade complete!
   Migrations applied: 1
 
 # Service running protection
-$ networkmonitor upgrade
+$ vigil upgrade
 Error: Monitor service is running. Stop it first with:
-  $ networkmonitor service stop
+  $ vigil service stop
 
 Or use --force to upgrade anyway (may cause issues)
 ```
@@ -450,7 +451,7 @@ pub fn run(env: Environment, force: bool) -> Result<()> {
     let config_path = env.config_path();
     let db_path = env.database_path();
 
-    println!("Initializing networkmonitor ({})", env);
+    println!("Initializing vigil ({})", env);
     println!();
 
     // Create directory
@@ -499,34 +500,34 @@ pub fn run(env: Environment, force: bool) -> Result<()> {
 
 # Initialize development environment
 dev-init:
-	cargo run -- --dev init
+ cargo run -- --dev init
 
 # Start monitoring in development
 dev-start:
-	cargo run -- --dev start --foreground
+ cargo run -- --dev start --foreground
 
 # Check development status
 dev-status:
-	cargo run -- --dev status
+ cargo run -- --dev status
 
 # View development stats
 dev-stats:
-	cargo run -- --dev stats -p 1d
+ cargo run -- --dev stats -p 1d
 
 # Reset development database (destructive!)
 dev-reset:
-	rm -f "$(HOME)/Library/Application Support/com.kapptec.networkmonitor/dev/monitor.db"
-	cargo run -- --dev init
+ rm -f "$(HOME)/Library/Application Support/ch.kapptec.vigil/dev/monitor.db"
+ cargo run -- --dev init
 
 # Run tests with isolated test environment
 test:
-	NETWORKMONITOR_ENV=test cargo test
+ vigil_ENV=test cargo test
 
 # Production commands (require confirmation)
 prod-upgrade:
-	networkmonitor service stop
-	networkmonitor upgrade
-	networkmonitor service start
+ vigil service stop
+ vigil upgrade
+ vigil service start
 ```
 
 ### 9. Cargo Aliases
@@ -543,8 +544,8 @@ dev-status = "run -- --dev status"
 **Usage:**
 
 ```bash
-$ cargo dev status        # Same as: cargo run -- --dev status
-$ cargo dev-start         # Same as: cargo run -- --dev start --foreground
+cargo dev status        # Same as: cargo run -- --dev status
+cargo dev-start         # Same as: cargo run -- --dev start --foreground
 ```
 
 ### 10. Startup Version Check
@@ -568,7 +569,7 @@ fn main() -> Result<()> {
             "Warning: Database schema version {} is older than software version {}",
             current, DB_SCHEMA_VERSION
         );
-        eprintln!("Run 'networkmonitor upgrade' to migrate the database.");
+        eprintln!("Run 'vigil upgrade' to migrate the database.");
         eprintln!();
 
         // Allow read-only commands, block write commands
@@ -605,13 +606,13 @@ fn main() -> Result<()> {
 ```rust
 #[test]
 fn test_environment_detection() {
-    std::env::set_var("NETWORKMONITOR_ENV", "dev");
+    std::env::set_var("vigil_ENV", "dev");
     assert_eq!(Environment::from_env(), Environment::Development);
 
-    std::env::set_var("NETWORKMONITOR_ENV", "production");
+    std::env::set_var("vigil_ENV", "production");
     assert_eq!(Environment::from_env(), Environment::Production);
 
-    std::env::remove_var("NETWORKMONITOR_ENV");
+    std::env::remove_var("vigil_ENV");
     assert_eq!(Environment::from_env(), Environment::Production);
 }
 
@@ -690,11 +691,11 @@ INSERT OR REPLACE INTO _meta (key, value) VALUES ('last_migration', datetime('no
 ## Acceptance Criteria
 
 1. `cargo run -- --dev start` uses isolated dev database
-2. `NETWORKMONITOR_ENV=dev` works as alternative to `--dev` flag
-3. `networkmonitor version -v` shows environment and schema version
-4. `networkmonitor upgrade` creates backup before migration
-5. `networkmonitor upgrade` fails if service is running (without `--force`)
-6. `networkmonitor upgrade --dry-run` shows pending migrations
+2. `vigil_ENV=dev` works as alternative to `--dev` flag
+3. `vigil version -v` shows environment and schema version
+4. `vigil upgrade` creates backup before migration
+5. `vigil upgrade` fails if service is running (without `--force`)
+6. `vigil upgrade --dry-run` shows pending migrations
 7. Development database can be reset without affecting production
 8. Startup warns if database schema is outdated
 9. All existing databases get `_meta` table on first run
@@ -705,11 +706,11 @@ INSERT OR REPLACE INTO _meta (key, value) VALUES ('last_migration', datetime('no
 ```bash
 # One-time: Initialize development environment
 $ cargo run -- --dev init
-Initializing networkmonitor (development)
+Initializing vigil (development)
 
-Created directory: /Users/andreas/.../com.kapptec.networkmonitor/dev
-Created config:    /Users/andreas/.../com.kapptec.networkmonitor/dev/config.toml
-Database ready:    /Users/andreas/.../com.kapptec.networkmonitor/dev/monitor.db
+Created directory: /Users/andreas/.../ch.kapptec.vigil/dev
+Created config:    /Users/andreas/.../ch.kapptec.vigil/dev/config.toml
+Database ready:    /Users/andreas/.../ch.kapptec.vigil/dev/monitor.db
 
 Schema version: 1
 
@@ -722,16 +723,16 @@ INFO Database opened at ".../dev/monitor.db"
 INFO Starting monitor (development mode)...
 
 # Meanwhile, production keeps running undisturbed
-$ networkmonitor status
+$ vigil status
 Status: ONLINE (production)
 ...
 
 # After schema changes: upgrade production
-$ networkmonitor service stop
-$ networkmonitor upgrade
+$ vigil service stop
+$ vigil upgrade
 Backup created: .../monitor.db.backup_20240115_143022
 Applying migration 2: Add degraded_events...
 Upgrade complete!
 
-$ networkmonitor service start
+$ vigil service start
 ```

@@ -17,6 +17,7 @@ Extend monitoring capabilities beyond ICMP ping to include HTTP/HTTPS endpoint c
 ## Why HTTP Monitoring?
 
 ICMP ping has limitations:
+
 1. **ICMP can succeed while HTTP fails** - Firewall rules, proxy issues, application errors
 2. **No application-layer visibility** - Can't detect if a web service is actually responding
 3. **DNS issues invisible** - Ping uses IP directly, misses DNS failures
@@ -242,7 +243,7 @@ critical_days = 7           # Critical alert within 7 days
 
 ## CLI Integration
 
-### `networkmonitor http`
+### `vigil http`
 
 ```
 HTTP Endpoint Status
@@ -263,7 +264,7 @@ Target: Internal Service (http://192.168.1.100:8080/ping)
   Total: 12ms (Connect: 8ms, TTFB: 4ms)
 ```
 
-### `networkmonitor certs`
+### `vigil certs`
 
 ```
 TLS Certificate Status
@@ -326,8 +327,8 @@ if cert.days_until_expiry <= config.warning_days {
 - [ ] Implement certificate expiration checking
 - [ ] Add database tables for HTTP logs
 - [ ] Add configuration parsing for HTTP targets
-- [ ] Implement `networkmonitor http` command
-- [ ] Implement `networkmonitor certs` command
+- [ ] Implement `vigil http` command
+- [ ] Implement `vigil certs` command
 - [ ] Integrate HTTP results with state machine
 - [ ] Add certificate expiration notifications
 - [ ] Add unit tests with mock HTTP server

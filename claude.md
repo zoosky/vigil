@@ -4,7 +4,7 @@ This file provides context for Claude Code sessions working on this project.
 
 ## Project Overview
 
-**networkmonitor** - A Rust CLI tool to monitor home network connectivity and diagnose intermittent outages by tracking which network hop is failing.
+**Vigil networkmonitor** - A Rust CLI tool to monitor home network connectivity and diagnose intermittent outages by tracking which network hop is failing.
 
 **Problem**: User has a fiber router with connection drops 1-60 seconds, multiple times daily.
 
@@ -39,9 +39,9 @@ All features complete!
 
 ## File Locations
 
-- **Config**: `~/Library/Application Support/com.kapptec.networkmonitor/config.toml`
-- **Database**: `~/Library/Application Support/com.kapptec.networkmonitor/monitor.db`
-- **Logs**: `~/Library/Application Support/com.kapptec.networkmonitor/monitor.log`
+- **Config**: `~/Library/Application Support/ch.kapptec.vigil/config.toml`
+- **Database**: `~/Library/Application Support/ch.kapptec.vigil/monitor.db`
+- **Logs**: `~/Library/Application Support/ch.kapptec.vigil/monitor.log`
 
 ## macOS Commands Used
 
@@ -75,6 +75,7 @@ cargo run -- start   # Start monitoring (placeholder until 002)
 ## Dependencies
 
 Core:
+
 - `tokio` - Async runtime
 - `clap` - CLI parsing
 - `rusqlite` - SQLite database
@@ -83,6 +84,7 @@ Core:
 - `tracing` - Logging
 
 Display:
+
 - `tabled` - Table formatting
 - `indicatif` - Progress bars
 
@@ -101,13 +103,13 @@ traceroutes(id, outage_id, timestamp, target, hops, success)
 cargo install --path .
 
 # Initialize config and database
-networkmonitor init
+vigil init
 
 # Start as a launchd service (auto-starts on login)
-networkmonitor service install
+vigil service install
 
 # Or run manually in foreground
-networkmonitor start --foreground
+vigil start --foreground
 ```
 
 ## Developer Guidelines
@@ -118,7 +120,6 @@ Never use any reference to Claude Code or Code.ai in any
 - Issue
 - Specification
 - Code snipped or comment
-
 
 ## User's Environment
 

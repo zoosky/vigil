@@ -41,6 +41,7 @@ By monitoring multiple targets and running traceroute during outages, we can ide
 - Runs concurrently using tokio tasks
 
 **Targets monitored:**
+
 - Local gateway (auto-detected or configured)
 - External DNS servers (8.8.8.8, 1.1.1.1)
 - Custom targets (user-configured)
@@ -66,6 +67,7 @@ Tracks connectivity state with hysteresis to avoid flapping:
 ```
 
 **Thresholds (configurable):**
+
 - `degraded_threshold`: 3 consecutive failures → DEGRADED
 - `offline_threshold`: 5 consecutive failures → OFFLINE
 - `recovery_threshold`: 2 consecutive successes → ONLINE
@@ -82,6 +84,7 @@ Tracks connectivity state with hysteresis to avoid flapping:
 SQLite database with three tables:
 
 **outages** - Outage events
+
 ```sql
 - id, start_time, end_time, duration_secs
 - affected_targets (JSON array)
@@ -90,12 +93,14 @@ SQLite database with three tables:
 ```
 
 **ping_log** - Individual ping results (sampled)
+
 ```sql
 - id, timestamp, target, target_name
 - latency_ms, success
 ```
 
 **traceroutes** - Traceroute snapshots
+
 ```sql
 - id, outage_id, timestamp, target
 - hops (JSON array), success
@@ -104,9 +109,11 @@ SQLite database with three tables:
 ### 5. Configuration (`src/config.rs`)
 
 TOML-based configuration at:
-- macOS: `~/Library/Application Support/com.kapptec.networkmonitor/config.toml`
+
+- macOS: `~/Library/Application Support/ch.kapptec.vigil/config.toml`
 
 Supports:
+
 - Monitor settings (intervals, thresholds)
 - Target list (gateway, DNS servers, custom)
 - Database path and retention

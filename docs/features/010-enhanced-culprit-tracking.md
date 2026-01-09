@@ -82,7 +82,7 @@ pub enum StateEvent {
 | DEGRADED entry | State changes ONLINE → DEGRADED | `state_change` |
 | OFFLINE entry | State changes DEGRADED → OFFLINE | `state_change` |
 | Periodic during OFFLINE | Every `traceroute_interval` seconds while OFFLINE | `periodic` |
-| Manual | User runs `networkmonitor trace` | `manual` |
+| Manual | User runs `vigil trace` | `manual` |
 
 **Configuration addition:**
 
@@ -218,7 +218,7 @@ Most common culprit: Hop 2 - ISP Modem (1 occurrence)
 Show detailed traceroute information for a specific outage:
 
 ```bash
-$ networkmonitor outage 42
+$ vigil outage 42
 
 Outage #42 Details
 ═══════════════════════════════════════════════════════════
@@ -390,7 +390,7 @@ CREATE TABLE IF NOT EXISTS degraded_events (...);
 2. Periodic traceroutes run during OFFLINE state at configured interval
 3. Outage report shows full IP address without truncation
 4. Outage report shows hop interpretation (Gateway, ISP Modem, etc.)
-5. `networkmonitor outage <id>` shows all traceroutes with timestamps
+5. `vigil outage <id>` shows all traceroutes with timestamps
 6. Traceroute count limited by `max_traceroutes_per_outage` config
 7. DEGRADED events tracked separately and linked to outages if escalated
 8. All traceroutes linked to their triggering event (outage or degraded)

@@ -26,6 +26,7 @@ Jitter = Average of |latency[n] - latency[n-1]|
 ```
 
 **Quality Thresholds:**
+
 - Excellent: < 5ms
 - Good: 5-15ms
 - Fair: 15-30ms
@@ -40,6 +41,7 @@ Loss % = (failed_pings / total_pings) × 100
 ```
 
 **Quality Thresholds:**
+
 - Excellent: 0%
 - Good: < 1%
 - Fair: 1-2.5%
@@ -207,7 +209,7 @@ latency_critical_ms = 200
 
 ## CLI Integration
 
-### `networkmonitor quality`
+### `vigil quality`
 
 ```
 Network Quality Report
@@ -238,7 +240,7 @@ Target: Cloudflare (1.1.1.1)
 Overall Network Grade: GOOD
 ```
 
-### `networkmonitor stats` Enhancement
+### `vigil stats` Enhancement
 
 Add quality metrics to existing stats output:
 
@@ -272,7 +274,7 @@ if quality.is_degraded(&config) {
 - [ ] Implement MOS score estimation
 - [ ] Add database table for quality metrics
 - [ ] Implement periodic snapshot storage
-- [ ] Add `networkmonitor quality` CLI command
+- [ ] Add `vigil quality` CLI command
 - [ ] Enhance stats command with quality trends
 - [ ] Add quality degradation to notifications
 - [ ] Add unit tests for all calculations

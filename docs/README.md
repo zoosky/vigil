@@ -26,16 +26,16 @@ Implementation is organized into sequentially numbered features:
 
 ```bash
 # Initialize (creates config and database)
-networkmonitor init
+vigil init
 
 # Start monitoring
-networkmonitor start
+vigil start
 
 # Check status
-networkmonitor status
+vigil status
 
 # View recent outages
-networkmonitor outages --last 24h
+vigil outages --last 24h
 ```
 
 ## Problem Statement

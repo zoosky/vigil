@@ -184,7 +184,7 @@ impl Config {
     /// Get the configuration file path
     pub fn config_path() -> Result<PathBuf, ConfigError> {
         let proj_dirs =
-            ProjectDirs::from("com", "kapptec", "networkmonitor").ok_or(ConfigError::NoConfigDir)?;
+            ProjectDirs::from("ch", "kapptec", "vigil").ok_or(ConfigError::NoConfigDir)?;
 
         Ok(proj_dirs.config_dir().join("config.toml"))
     }
@@ -192,7 +192,7 @@ impl Config {
     /// Get the data directory path
     pub fn data_dir() -> Result<PathBuf, ConfigError> {
         let proj_dirs =
-            ProjectDirs::from("com", "kapptec", "networkmonitor").ok_or(ConfigError::NoConfigDir)?;
+            ProjectDirs::from("ch", "kapptec", "vigil").ok_or(ConfigError::NoConfigDir)?;
 
         Ok(proj_dirs.data_dir().to_path_buf())
     }

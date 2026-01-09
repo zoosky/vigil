@@ -15,7 +15,7 @@ Implement the CLI commands for viewing status, outage history, and statistics.
 
 ## Commands
 
-### `networkmonitor status`
+### `vigil status`
 
 ```
 Network Monitor Status
@@ -35,7 +35,7 @@ Today's Statistics:
   Availability: 99.88%
 ```
 
-### `networkmonitor outages`
+### `vigil outages`
 
 ```
 Recent Outages (last 24 hours)
@@ -53,7 +53,7 @@ Summary: 3 outages, 1m 5s total downtime
 Most common failing hop: Hop 3 (ISP gateway) - 2 occurrences
 ```
 
-### `networkmonitor stats`
+### `vigil stats`
 
 ```
 Statistics (last 24 hours)

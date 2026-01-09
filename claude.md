@@ -20,10 +20,24 @@ This file provides context for Claude Code sessions working on this project.
 | 004 Hop Analysis | Done | `src/monitor/traceroute.rs` |
 | 005 CLI Reporting | Done | `src/cli/helpers.rs`, `status.rs`, `outages.rs`, `stats.rs` |
 | 006 Polish & Service | Done | `src/cli/service.rs`, log rotation in `lib.rs` |
+| 011 Dev Environment | Done | `config.rs` (Environment), `main.rs` (--dev flag) |
 
-## Implementation Order
+## Development Workflow
 
-All features complete!
+```bash
+# Initialize dev environment (isolated database)
+cargo run -- --dev init
+
+# Run commands in dev mode
+cargo run -- --dev status
+cargo run -- --dev start --foreground
+
+# Or use cargo aliases
+cargo dev status
+cargo dev-start
+```
+
+Environment variables: `VIGIL_ENV=dev` or `--dev` flag
 
 ## Key Design Decisions
 

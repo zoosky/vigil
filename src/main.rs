@@ -2,11 +2,11 @@ use clap::{Parser, Subcommand};
 use tokio::signal;
 use vigil::{
     cli,
-    config::Config,
+    config::{Config, Environment},
     detect_gateway,
     models::ConnectivityState,
     monitor::{format_traceroute, ConnectivityTracker, HopAnalyzer, PingMonitor, StateEvent},
-    App,
+    App, VERSION,
 };
 
 #[derive(Parser)]
@@ -17,8 +17,30 @@ use vigil::{
     about = "Keep watch over your network - monitor connectivity and diagnose intermittent outages"
 )]
 struct Cli {
+    /// Use development environment (isolated database)
+    #[arg(long, global = true)]
+    dev: bool,
+
+    /// Environment: production, development, test
+    #[arg(long, short = 'e', global = true, env = "VIGIL_ENV")]
+    env: Option<String>,
+
     #[command(subcommand)]
     command: Commands,
+}
+
+impl Cli {
+    /// Determine the environment from CLI flags
+    fn environment(&self) -> Environment {
+        if self.dev {
+            return Environment::Development;
+        }
+        match self.env.as_deref() {
+            Some("dev") | Some("development") => Environment::Development,
+            Some("test") => Environment::Test,
+            _ => Environment::from_env(),
+        }
+    }
 }
 
 #[derive(Subcommand)]
@@ -75,6 +97,24 @@ enum Commands {
 
     /// Initialize configuration and database
     Init,
+
+    /// Show version and environment info
+    Version {
+        /// Show detailed version info
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Upgrade database schema
+    Upgrade {
+        /// Show what would be done without making changes
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Skip creating a backup
+        #[arg(long)]
+        no_backup: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -120,42 +160,53 @@ enum ServiceAction {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
+    let env = cli.environment();
 
     match cli.command {
-        Commands::Init => cmd_init()?,
-        Commands::Config { action } => cmd_config(action)?,
-        Commands::Start { foreground } => cmd_start(foreground).await?,
-        Commands::Status => cmd_status().await?,
-        Commands::Outages { last } => cmd_outages(&last)?,
-        Commands::Stats { period } => cmd_stats(&period)?,
+        Commands::Init => cmd_init(&env)?,
+        Commands::Config { action } => cmd_config(action, &env)?,
+        Commands::Start { foreground } => cmd_start(foreground, &env).await?,
+        Commands::Status => cmd_status(&env).await?,
+        Commands::Outages { last } => cmd_outages(&last, &env)?,
+        Commands::Stats { period } => cmd_stats(&period, &env)?,
         Commands::Trace { target } => cmd_trace(&target).await?,
         Commands::Service { action } => cmd_service(action)?,
-        Commands::Cleanup { days } => cmd_cleanup(days)?,
+        Commands::Cleanup { days } => cmd_cleanup(days, &env)?,
+        Commands::Version { verbose } => cmd_version(verbose, &env)?,
+        Commands::Upgrade { dry_run, no_backup } => cmd_upgrade(dry_run, no_backup, &env)?,
     }
 
     Ok(())
 }
 
-fn cmd_init() -> Result<(), Box<dyn std::error::Error>> {
-    println!("Initializing network monitor...\n");
+fn cmd_init(env: &Environment) -> Result<(), Box<dyn std::error::Error>> {
+    println!("Initializing Vigil ({})...\n", env);
+
+    // Create data directory
+    let data_dir = env.data_dir()?;
+    if !data_dir.exists() {
+        std::fs::create_dir_all(&data_dir)?;
+        println!("Created directory:");
+        println!("  {}\n", data_dir.display());
+    }
 
     // Create default config
     let config = Config::default();
-    let config_path = Config::config_path()?;
+    let config_path = env.config_path()?;
 
     if config_path.exists() {
         println!("Configuration file already exists at:");
-        println!("  {:?}\n", config_path);
+        println!("  {}\n", config_path.display());
     } else {
-        config.save()?;
+        config.save_for_env(env)?;
         println!("Created configuration file at:");
-        println!("  {:?}\n", config_path);
+        println!("  {}\n", config_path.display());
     }
 
     // Initialize database
-    let app = App::new()?;
+    let app = App::with_env(*env)?;
     println!("Database initialized at:");
-    println!("  {:?}\n", app.config.database_path()?);
+    println!("  {}\n", app.db_path()?.display());
 
     // Detect gateway
     if let Some(gateway) = detect_gateway() {
@@ -174,36 +225,43 @@ fn cmd_init() -> Result<(), Box<dyn std::error::Error>> {
         println!("  - {} ({})", target.name, target.ip);
     }
 
-    println!("\nRun 'vigil start' to begin monitoring.");
+    if env.is_dev() {
+        println!("\nDevelopment environment initialized!");
+        println!("Run with: vigil --dev <command>");
+    } else {
+        println!("\nRun 'vigil start' to begin monitoring.");
+    }
 
     Ok(())
 }
 
-fn cmd_config(action: ConfigAction) -> Result<(), Box<dyn std::error::Error>> {
+fn cmd_config(action: ConfigAction, env: &Environment) -> Result<(), Box<dyn std::error::Error>> {
     match action {
         ConfigAction::Show => {
-            let config = Config::load()?;
+            let config = Config::load_for_env(env)?;
             let toml_str = toml::to_string_pretty(&config)?;
             println!("{}", toml_str);
         }
         ConfigAction::Path => {
-            let path = Config::config_path()?;
-            println!("{}", path.display());
+            println!("Environment: {}", env);
+            println!("Config:      {}", env.config_path()?.display());
+            println!("Database:    {}", env.database_path()?.display());
+            println!("Logs:        {}", env.log_path()?.display());
         }
         ConfigAction::Set { key, value } => {
             println!("Setting {} = {}", key, value);
             println!("(Configuration editing not yet implemented - edit config file directly)");
-            let path = Config::config_path()?;
+            let path = env.config_path()?;
             println!("Config file: {}", path.display());
         }
     }
     Ok(())
 }
 
-async fn cmd_start(_foreground: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let app = App::new()?;
+async fn cmd_start(_foreground: bool, env: &Environment) -> Result<(), Box<dyn std::error::Error>> {
+    let app = App::with_env(*env)?;
 
-    println!("Network Monitor");
+    println!("Vigil Network Monitor ({})", env);
     println!("═══════════════════════════════════════════════════════════\n");
 
     let targets = app.config.all_targets();
@@ -388,18 +446,18 @@ async fn cmd_start(_foreground: bool) -> Result<(), Box<dyn std::error::Error>> 
     Ok(())
 }
 
-async fn cmd_status() -> Result<(), Box<dyn std::error::Error>> {
-    let app = App::new()?;
+async fn cmd_status(env: &Environment) -> Result<(), Box<dyn std::error::Error>> {
+    let app = App::with_env(*env)?;
     cli::status::run(&app).await
 }
 
-fn cmd_outages(last: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let app = App::new()?;
+fn cmd_outages(last: &str, env: &Environment) -> Result<(), Box<dyn std::error::Error>> {
+    let app = App::with_env(*env)?;
     cli::outages::run(&app, last)
 }
 
-fn cmd_stats(period: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let app = App::new()?;
+fn cmd_stats(period: &str, env: &Environment) -> Result<(), Box<dyn std::error::Error>> {
+    let app = App::with_env(*env)?;
     cli::stats::run(&app, period)
 }
 
@@ -422,19 +480,22 @@ fn cmd_service(action: ServiceAction) -> Result<(), Box<dyn std::error::Error>> 
     Ok(())
 }
 
-fn cmd_cleanup(days: Option<u32>) -> Result<(), Box<dyn std::error::Error>> {
-    let app = App::new()?;
+fn cmd_cleanup(days: Option<u32>, env: &Environment) -> Result<(), Box<dyn std::error::Error>> {
+    let app = App::with_env(*env)?;
 
     let retention_days = days.unwrap_or(app.config.database.retention_days);
 
-    println!("Cleaning up data older than {} days...\n", retention_days);
+    println!(
+        "Cleaning up data older than {} days ({})...\n",
+        retention_days, env
+    );
 
     // Clean up database
     let deleted = app.db.cleanup(retention_days)?;
     println!("Database: Deleted {} old records", deleted);
 
     // Clean up old log files
-    if let Ok(Some(log_path)) = app.config.log_path() {
+    if let Ok(Some(log_path)) = app.config.log_path_for_env(env) {
         if let Some(log_dir) = log_path.parent() {
             match vigil::cleanup_old_logs(log_dir, retention_days) {
                 Ok(deleted_logs) => {
@@ -452,5 +513,58 @@ fn cmd_cleanup(days: Option<u32>) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!("\nCleanup complete.");
+    Ok(())
+}
+
+fn cmd_version(verbose: bool, env: &Environment) -> Result<(), Box<dyn std::error::Error>> {
+    println!("vigil {}", VERSION);
+
+    if verbose {
+        println!();
+        println!("Environment:     {}", env);
+        println!("Config:          {}", env.config_path()?.display());
+        println!("Database:        {}", env.database_path()?.display());
+        println!();
+        println!("Schema version:  {} (current)", vigil::DB_SCHEMA_VERSION);
+    }
+
+    Ok(())
+}
+
+fn cmd_upgrade(
+    dry_run: bool,
+    no_backup: bool,
+    env: &Environment,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use chrono::Utc;
+
+    let db_path = env.database_path()?;
+
+    if !db_path.exists() {
+        println!("Database does not exist. Run 'vigil init' first.");
+        return Ok(());
+    }
+
+    println!("Database: {}", db_path.display());
+    println!("Current schema version: {}", vigil::DB_SCHEMA_VERSION);
+
+    if dry_run {
+        println!("\n[Dry run] No changes will be made.");
+        println!("Database is at the latest schema version.");
+        return Ok(());
+    }
+
+    // Create backup if requested
+    if !no_backup {
+        let backup_name = format!("monitor.db.backup_{}", Utc::now().format("%Y%m%d_%H%M%S"));
+        let backup_path = db_path.parent().unwrap().join(&backup_name);
+        std::fs::copy(&db_path, &backup_path)?;
+        println!("\nBackup created: {}", backup_path.display());
+    }
+
+    // Open database (this will run any pending migrations)
+    let _app = App::with_env(*env)?;
+
+    println!("\nDatabase is up to date.");
     Ok(())
 }

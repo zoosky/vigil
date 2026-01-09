@@ -1,4 +1,4 @@
-# Claude Context - Network Monitor
+# Claude Context - Vigil Network Monitor
 
 This file provides context for Claude Code sessions working on this project.
 
@@ -6,7 +6,7 @@ This file provides context for Claude Code sessions working on this project.
 
 **networkmonitor** - A Rust CLI tool to monitor home network connectivity and diagnose intermittent outages by tracking which network hop is failing.
 
-**Problem**: User has a Zyxel fiber router with connection drops 1-60 seconds, multiple times daily.
+**Problem**: User has a fiber router with connection drops 1-60 seconds, multiple times daily.
 
 **Solution**: Continuous ping monitoring with traceroute-based hop analysis to identify the culprit (local router, ISP equipment, or ISP backbone).
 
@@ -94,23 +94,34 @@ ping_log(id, timestamp, target, target_name, latency_ms, success)
 traceroutes(id, outage_id, timestamp, target, hops, success)
 ```
 
-## Next Steps
+## Installation
 
-All features implemented! The tool is ready for use.
-
-To install as a service:
 ```bash
-cargo build --release
-cargo run -- service install
+# Install the binary
+cargo install --path .
+
+# Initialize config and database
+networkmonitor init
+
+# Start as a launchd service (auto-starts on login)
+networkmonitor service install
+
+# Or run manually in foreground
+networkmonitor start --foreground
 ```
 
-Future enhancements could include:
-- Notifications (macOS native, Slack, email)
-- Web dashboard for viewing stats
-- More detailed traceroute analysis
+## Developer Guidelines
+
+Never use any reference to Claude Code or Code.ai in any
+
+- Pull request test
+- Issue
+- Specification
+- Code snipped or comment
+
 
 ## User's Environment
 
 - macOS (Darwin)
 - Gateway detected at: 10.0.0.1
-- Zyxel fiber router (connection drops are the problem being diagnosed)
+- Fiber router (connection drops are the problem being diagnosed)

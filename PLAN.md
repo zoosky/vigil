@@ -2,7 +2,7 @@
 
 ## Problem Statement
 
-Home network with WLAN/ETH connection through a Zyxel fiber router experiences intermittent outages (1-60 seconds) multiple times daily. Need to identify the culprit by monitoring connectivity and analyzing network hops.
+Home network with WLAN/ETH connection through a fiber router experiences intermittent outages (1-60 seconds) multiple times daily. Need to identify the culprit by monitoring connectivity and analyzing network hops.
 
 ## Architecture Overview
 
@@ -27,7 +27,7 @@ Home network with WLAN/ETH connection through a Zyxel fiber router experiences i
 ## Network Topology to Monitor
 
 ```
-[This Machine] → [Local Gateway/Router] → [Zyxel Fiber Router] → [ISP] → [Internet]
+[This Machine] → [Local Gateway/Router] → [ Fiber Router] → [ISP] → [Internet]
      hop 0            hop 1                    hop 2              hop 3+    target
 ```
 
@@ -40,7 +40,7 @@ Monitor multiple targets to isolate failure points:
 | Target | Purpose | Interval |
 |--------|---------|----------|
 | Gateway (e.g., 192.168.1.1) | Local network health | 1s |
-| Zyxel router (if separate IP) | Router health | 1s |
+| Fiber router (if separate IP) | Router health | 1s |
 | 8.8.8.8 (Google DNS) | Internet connectivity | 1s |
 | 1.1.1.1 (Cloudflare DNS) | Redundant internet check | 1s |
 | Custom target (configurable) | User-defined | 1s |
@@ -277,7 +277,7 @@ Recent Outages (last 24 hours)
 │ Start Time          │ Duration │ Failing Hop │ Affected Targets  │
 ├─────────────────────┼──────────┼─────────────┼───────────────────┤
 │ 2024-01-15 14:23:05 │ 12s      │ 3 (ISP)     │ 8.8.8.8, 1.1.1.1  │
-│ 2024-01-15 09:45:32 │ 45s      │ 2 (Zyxel)   │ All targets       │
+│ 2024-01-15 09:45:32 │ 45s      │ 2 (Home)   │ All targets       │
 │ 2024-01-15 03:12:18 │ 8s       │ 3 (ISP)     │ 8.8.8.8, 1.1.1.1  │
 └─────────────────────┴──────────┴─────────────┴───────────────────┘
 

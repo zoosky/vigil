@@ -1,5 +1,5 @@
-use crate::cli::helpers::{format_duration_secs, parse_duration, truncate};
-use crate::models::Outage;
+use crate::cli::helpers::{format_duration_secs, parse_duration};
+use crate::models::{interpret_hop, Outage};
 use crate::App;
 use chrono::Utc;
 use std::collections::HashMap;
@@ -20,18 +20,15 @@ pub fn run(app: &App, last: &str) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Print table header
-    println!(
-        "{:<19}  {:>8}  {:>12}  Affected Targets",
-        "Start Time", "Duration", "Failing Hop"
-    );
-    println!("{}", "─".repeat(65));
+    println!("{:<19}  {:>8}  Culprit", "Start Time", "Duration");
+    println!("{}", "─".repeat(70));
 
     // Print each outage
     for outage in &outages {
         print_outage_row(outage);
     }
 
-    println!("{}", "─".repeat(65));
+    println!("{}", "─".repeat(70));
 
     // Summary
     let total_downtime: f64 = outages.iter().filter_map(|o| o.duration_secs).sum();
@@ -51,15 +48,10 @@ pub fn run(app: &App, last: &str) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     if let Some((hop, count)) = hop_counts.into_iter().max_by_key(|(_, count)| *count) {
-        let hop_name = match hop {
-            1 => "Gateway/Router",
-            2 => "ISP Modem",
-            _ => "ISP Backbone",
-        };
         println!(
-            "Most common failing hop: {} ({}) - {} occurrence{}",
+            "Most common culprit: Hop {} - {} ({} occurrence{})",
             hop,
-            hop_name,
+            interpret_hop(hop),
             count,
             if count == 1 { "" } else { "s" }
         );
@@ -76,29 +68,19 @@ fn print_outage_row(outage: &Outage) {
         .map(format_duration_secs)
         .unwrap_or_else(|| "ongoing".to_string());
 
-    let failing_hop = match (outage.failing_hop, &outage.failing_hop_ip) {
-        (Some(hop), Some(ip)) => format!("{} ({})", hop, truncate(ip, 8)),
-        (Some(hop), None) => format!("{}", hop),
-        (None, _) => "-".to_string(),
+    // Enhanced failing hop display with full IP and interpretation
+    let culprit = match (outage.failing_hop, &outage.failing_hop_ip) {
+        (Some(hop), Some(ip)) => {
+            format!("Hop {} {} ({})", hop, ip, interpret_hop(hop))
+        }
+        (Some(hop), None) => format!("Hop {} ({})", hop, interpret_hop(hop)),
+        (None, _) => "Unknown".to_string(),
     };
 
-    let affected = if outage.affected_targets.is_empty() {
-        "-".to_string()
-    } else if outage.affected_targets.len() <= 2 {
-        outage.affected_targets.join(", ")
-    } else {
-        format!(
-            "{}, +{} more",
-            outage.affected_targets[0],
-            outage.affected_targets.len() - 1
-        )
-    };
+    println!("{:<19}  {:>8}  {}", start_time, duration, culprit);
 
-    println!(
-        "{:<19}  {:>8}  {:>12}  {}",
-        start_time,
-        duration,
-        failing_hop,
-        truncate(&affected, 20)
-    );
+    // Print affected targets on separate line if present
+    if !outage.affected_targets.is_empty() {
+        println!("{:29}  Targets: {}", "", outage.affected_targets.join(", "));
+    }
 }

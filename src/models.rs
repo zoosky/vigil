@@ -99,6 +99,74 @@ impl Target {
     }
 }
 
+/// A degraded event (before escalating to outage)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DegradedEvent {
+    pub id: Option<i64>,
+    pub start_time: DateTime<Utc>,
+    pub end_time: Option<DateTime<Utc>>,
+    pub duration_secs: Option<f64>,
+    pub escalated_to_outage_id: Option<i64>,
+    pub affected_targets: Vec<String>,
+    pub notes: Option<String>,
+}
+
+impl DegradedEvent {
+    pub fn new(affected_targets: Vec<String>) -> Self {
+        Self {
+            id: None,
+            start_time: Utc::now(),
+            end_time: None,
+            duration_secs: None,
+            escalated_to_outage_id: None,
+            affected_targets,
+            notes: None,
+        }
+    }
+
+    pub fn end(&mut self) {
+        let now = Utc::now();
+        self.end_time = Some(now);
+        self.duration_secs = Some((now - self.start_time).num_milliseconds() as f64 / 1000.0);
+    }
+
+    pub fn escalate(&mut self, outage_id: i64) {
+        self.escalated_to_outage_id = Some(outage_id);
+        self.end();
+    }
+}
+
+/// Traceroute trigger type
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TraceTrigger {
+    StateChange,
+    Periodic,
+    Manual,
+}
+
+impl std::fmt::Display for TraceTrigger {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TraceTrigger::StateChange => write!(f, "state_change"),
+            TraceTrigger::Periodic => write!(f, "periodic"),
+            TraceTrigger::Manual => write!(f, "manual"),
+        }
+    }
+}
+
+impl std::str::FromStr for TraceTrigger {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "state_change" => Ok(TraceTrigger::StateChange),
+            "periodic" => Ok(TraceTrigger::Periodic),
+            "manual" => Ok(TraceTrigger::Manual),
+            _ => Err(format!("Unknown trace trigger: {}", s)),
+        }
+    }
+}
+
 /// Statistics summary
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Stats {
@@ -109,4 +177,14 @@ pub struct Stats {
     pub availability_percent: f64,
     pub avg_outage_duration_secs: Option<f64>,
     pub most_common_failing_hop: Option<u8>,
+}
+
+/// Interpret hop number to human-readable name
+pub fn interpret_hop(hop: u8) -> &'static str {
+    match hop {
+        1 => "Gateway",
+        2 => "ISP Modem",
+        3 => "ISP Router",
+        _ => "ISP Backbone",
+    }
 }

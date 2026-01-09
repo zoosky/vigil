@@ -13,7 +13,7 @@ use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Database schema version - increment when adding migrations
-pub const DB_SCHEMA_VERSION: u32 = 1;
+pub const DB_SCHEMA_VERSION: u32 = 2;
 
 /// Initialize the logging framework with daily log rotation (for production)
 pub fn init_logging(config: &Config) -> Result<(), Box<dyn std::error::Error>> {

@@ -1,12 +1,15 @@
-use crate::models::{Outage, PingResult, Stats, TracerouteResult};
+use crate::models::{DegradedEvent, Outage, PingResult, Stats, TraceTrigger, TracerouteResult};
 use chrono::{DateTime, Duration, Utc};
 use rusqlite::{params, Connection};
 use std::path::Path;
 use thiserror::Error;
 
-/// Current schema version - increment when adding migrations
-#[allow(dead_code)]
-const SCHEMA_VERSION: i32 = 1;
+/// Traceroute result with metadata
+#[derive(Debug, Clone)]
+pub struct TracerouteWithMeta {
+    pub result: TracerouteResult,
+    pub trigger: TraceTrigger,
+}
 
 #[derive(Error, Debug)]
 pub enum DbError {
@@ -74,10 +77,9 @@ impl Database {
             self.migrate_v1()?;
         }
 
-        // Future migrations would go here:
-        // if current_version < 2 {
-        //     self.migrate_v2()?;
-        // }
+        if current_version < 2 {
+            self.migrate_v2()?;
+        }
 
         Ok(())
     }
@@ -131,6 +133,38 @@ impl Database {
             -- Record migration
             INSERT INTO schema_version (version, description)
             VALUES (1, 'Initial schema: outages, ping_log, traceroutes');
+            "#,
+        )?;
+
+        Ok(())
+    }
+
+    /// V2: Enhanced culprit tracking (Feature 010)
+    fn migrate_v2(&self) -> Result<(), DbError> {
+        tracing::info!("Applying database migration v2: Enhanced culprit tracking");
+
+        self.conn.execute_batch(
+            r#"
+            -- Degraded events table
+            CREATE TABLE IF NOT EXISTS degraded_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                start_time TEXT NOT NULL,
+                end_time TEXT,
+                duration_secs REAL,
+                escalated_to_outage_id INTEGER REFERENCES outages(id),
+                affected_targets TEXT NOT NULL,
+                notes TEXT
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_degraded_start ON degraded_events(start_time);
+
+            -- Add columns to traceroutes table
+            ALTER TABLE traceroutes ADD COLUMN degraded_event_id INTEGER REFERENCES degraded_events(id);
+            ALTER TABLE traceroutes ADD COLUMN trace_trigger TEXT DEFAULT 'state_change';
+
+            -- Record migration
+            INSERT INTO schema_version (version, description)
+            VALUES (2, 'Enhanced culprit tracking: degraded_events table, traceroute triggers');
             "#,
         )?;
 
@@ -241,6 +275,72 @@ impl Database {
         Ok(outages)
     }
 
+    /// Get a specific outage by ID
+    pub fn get_outage(&self, id: i64) -> Result<Option<Outage>, DbError> {
+        let mut stmt = self.conn.prepare(
+            r#"
+            SELECT id, start_time, end_time, duration_secs, affected_targets, failing_hop, failing_hop_ip, notes
+            FROM outages
+            WHERE id = ?1
+            "#,
+        )?;
+
+        let mut rows = stmt.query(params![id])?;
+
+        if let Some(row) = rows.next()? {
+            Ok(Some(self.row_to_outage(row)?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Get all traceroutes for an outage
+    pub fn get_traceroutes_for_outage(
+        &self,
+        outage_id: i64,
+    ) -> Result<Vec<TracerouteWithMeta>, DbError> {
+        let mut stmt = self.conn.prepare(
+            r#"
+            SELECT timestamp, target, hops, success, trace_trigger
+            FROM traceroutes
+            WHERE outage_id = ?1
+            ORDER BY timestamp ASC
+            "#,
+        )?;
+
+        let mut traces = Vec::new();
+        let mut rows = stmt.query(params![outage_id])?;
+
+        while let Some(row) = rows.next()? {
+            let timestamp_str: String = row.get(0)?;
+            let target: String = row.get(1)?;
+            let hops_json: String = row.get(2)?;
+            let success: i32 = row.get(3)?;
+            let trigger: Option<String> = row.get(4)?;
+
+            let timestamp = DateTime::parse_from_rfc3339(&timestamp_str)
+                .map(|dt| dt.with_timezone(&Utc))
+                .unwrap_or_else(|_| Utc::now());
+
+            let hops: Vec<crate::models::TracerouteHop> =
+                serde_json::from_str(&hops_json).unwrap_or_default();
+
+            traces.push(TracerouteWithMeta {
+                result: TracerouteResult {
+                    target,
+                    timestamp,
+                    hops,
+                    success: success != 0,
+                },
+                trigger: trigger
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(TraceTrigger::StateChange),
+            });
+        }
+
+        Ok(traces)
+    }
+
     fn row_to_outage(&self, row: &rusqlite::Row) -> Result<Outage, DbError> {
         let start_time_str: String = row.get(1)?;
         let end_time_str: Option<String> = row.get(2)?;
@@ -264,6 +364,94 @@ impl Database {
         })
     }
 
+    /// Insert a new degraded event (returns the event ID)
+    pub fn insert_degraded_event(&self, event: &DegradedEvent) -> Result<i64, DbError> {
+        let affected_targets_json = serde_json::to_string(&event.affected_targets)?;
+
+        self.conn.execute(
+            r#"
+            INSERT INTO degraded_events (start_time, end_time, duration_secs, escalated_to_outage_id, affected_targets, notes)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            "#,
+            params![
+                event.start_time.to_rfc3339(),
+                event.end_time.map(|t| t.to_rfc3339()),
+                event.duration_secs,
+                event.escalated_to_outage_id,
+                affected_targets_json,
+                event.notes,
+            ],
+        )?;
+
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Update an existing degraded event (e.g., when it ends or escalates)
+    pub fn update_degraded_event(&self, event: &DegradedEvent) -> Result<(), DbError> {
+        let affected_targets_json = serde_json::to_string(&event.affected_targets)?;
+
+        self.conn.execute(
+            r#"
+            UPDATE degraded_events
+            SET end_time = ?2, duration_secs = ?3, escalated_to_outage_id = ?4, affected_targets = ?5, notes = ?6
+            WHERE id = ?1
+            "#,
+            params![
+                event.id,
+                event.end_time.map(|t| t.to_rfc3339()),
+                event.duration_secs,
+                event.escalated_to_outage_id,
+                affected_targets_json,
+                event.notes,
+            ],
+        )?;
+
+        Ok(())
+    }
+
+    /// Get the most recent ongoing degraded event (if any)
+    pub fn get_ongoing_degraded_event(&self) -> Result<Option<DegradedEvent>, DbError> {
+        let mut stmt = self.conn.prepare(
+            r#"
+            SELECT id, start_time, end_time, duration_secs, escalated_to_outage_id, affected_targets, notes
+            FROM degraded_events
+            WHERE end_time IS NULL
+            ORDER BY start_time DESC
+            LIMIT 1
+            "#,
+        )?;
+
+        let mut rows = stmt.query([])?;
+
+        if let Some(row) = rows.next()? {
+            Ok(Some(self.row_to_degraded_event(row)?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn row_to_degraded_event(&self, row: &rusqlite::Row) -> Result<DegradedEvent, DbError> {
+        let start_time_str: String = row.get(1)?;
+        let end_time_str: Option<String> = row.get(2)?;
+        let affected_targets_json: String = row.get(5)?;
+
+        Ok(DegradedEvent {
+            id: Some(row.get(0)?),
+            start_time: DateTime::parse_from_rfc3339(&start_time_str)
+                .map(|dt| dt.with_timezone(&Utc))
+                .unwrap_or_else(|_| Utc::now()),
+            end_time: end_time_str.and_then(|s| {
+                DateTime::parse_from_rfc3339(&s)
+                    .map(|dt| dt.with_timezone(&Utc))
+                    .ok()
+            }),
+            duration_secs: row.get(3)?,
+            escalated_to_outage_id: row.get(4)?,
+            affected_targets: serde_json::from_str(&affected_targets_json).unwrap_or_default(),
+            notes: row.get(6)?,
+        })
+    }
+
     /// Insert a ping result
     pub fn insert_ping(&self, ping: &PingResult) -> Result<(), DbError> {
         self.conn.execute(
@@ -282,21 +470,25 @@ impl Database {
         Ok(())
     }
 
-    /// Insert a traceroute result
+    /// Insert a traceroute result with optional trigger and event linkage
     pub fn insert_traceroute(
         &self,
         outage_id: Option<i64>,
+        degraded_event_id: Option<i64>,
+        trigger: TraceTrigger,
         trace: &TracerouteResult,
     ) -> Result<(), DbError> {
         let hops_json = serde_json::to_string(&trace.hops)?;
 
         self.conn.execute(
             r#"
-            INSERT INTO traceroutes (outage_id, timestamp, target, hops, success)
-            VALUES (?1, ?2, ?3, ?4, ?5)
+            INSERT INTO traceroutes (outage_id, degraded_event_id, trace_trigger, timestamp, target, hops, success)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
             "#,
             params![
                 outage_id,
+                degraded_event_id,
+                trigger.to_string(),
                 trace.timestamp.to_rfc3339(),
                 trace.target,
                 hops_json,
@@ -369,7 +561,12 @@ impl Database {
             params![cutoff_str],
         )?;
 
-        Ok((deleted_pings + deleted_traceroutes + deleted_outages) as u64)
+        let deleted_degraded = self.conn.execute(
+            "DELETE FROM degraded_events WHERE start_time < ?1",
+            params![cutoff_str],
+        )?;
+
+        Ok((deleted_pings + deleted_traceroutes + deleted_outages + deleted_degraded) as u64)
     }
 }
 

@@ -105,7 +105,10 @@ async fn ping_target(ip: &str, name: &str, timeout_ms: u64) -> PingResult {
                 error: if success {
                     None
                 } else {
-                    Some(parse_error(&stdout, &String::from_utf8_lossy(&output.stderr)))
+                    Some(parse_error(
+                        &stdout,
+                        &String::from_utf8_lossy(&output.stderr),
+                    ))
                 },
             }
         }
@@ -128,9 +131,7 @@ fn parse_latency(output: &str) -> Option<f64> {
         if let Some(time_idx) = line.find("time=") {
             let after_time = &line[time_idx + 5..];
             // Find the end of the number (space or "ms")
-            let end_idx = after_time
-                .find(|c: char| c == ' ' || c == 'm')
-                .unwrap_or(after_time.len());
+            let end_idx = after_time.find([' ', 'm']).unwrap_or(after_time.len());
             let num_str = &after_time[..end_idx];
             if let Ok(latency) = num_str.parse::<f64>() {
                 return Some(latency);

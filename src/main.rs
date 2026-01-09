@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+use tokio::signal;
 use vigil::{
     cli,
     config::Config,
@@ -7,11 +8,14 @@ use vigil::{
     monitor::{format_traceroute, ConnectivityTracker, HopAnalyzer, PingMonitor, StateEvent},
     App,
 };
-use tokio::signal;
 
 #[derive(Parser)]
 #[command(name = "vigil")]
-#[command(author, version, about = "Keep watch over your network - monitor connectivity and diagnose intermittent outages")]
+#[command(
+    author,
+    version,
+    about = "Keep watch over your network - monitor connectivity and diagnose intermittent outages"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -209,10 +213,7 @@ async fn cmd_start(_foreground: bool) -> Result<(), Box<dyn std::error::Error>> 
     }
 
     println!("\nSettings:");
-    println!(
-        "  Ping interval: {}ms",
-        app.config.monitor.ping_interval_ms
-    );
+    println!("  Ping interval: {}ms", app.config.monitor.ping_interval_ms);
     println!("  Ping timeout: {}ms", app.config.monitor.ping_timeout_ms);
     println!(
         "  Degraded threshold: {} failures",

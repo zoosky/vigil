@@ -217,7 +217,11 @@ impl Database {
     }
 
     /// Get outages within a time range
-    pub fn get_outages(&self, since: DateTime<Utc>, until: DateTime<Utc>) -> Result<Vec<Outage>, DbError> {
+    pub fn get_outages(
+        &self,
+        since: DateTime<Utc>,
+        until: DateTime<Utc>,
+    ) -> Result<Vec<Outage>, DbError> {
         let mut stmt = self.conn.prepare(
             r#"
             SELECT id, start_time, end_time, duration_secs, affected_targets, failing_hop, failing_hop_ip, notes
@@ -279,7 +283,11 @@ impl Database {
     }
 
     /// Insert a traceroute result
-    pub fn insert_traceroute(&self, outage_id: Option<i64>, trace: &TracerouteResult) -> Result<(), DbError> {
+    pub fn insert_traceroute(
+        &self,
+        outage_id: Option<i64>,
+        trace: &TracerouteResult,
+    ) -> Result<(), DbError> {
         let hops_json = serde_json::to_string(&trace.hops)?;
 
         self.conn.execute(
@@ -303,10 +311,7 @@ impl Database {
         let outages = self.get_outages(since, until)?;
 
         let total_outages = outages.len() as u32;
-        let total_downtime_secs: f64 = outages
-            .iter()
-            .filter_map(|o| o.duration_secs)
-            .sum();
+        let total_downtime_secs: f64 = outages.iter().filter_map(|o| o.duration_secs).sum();
 
         let period_secs = (until - since).num_seconds() as f64;
         let availability_percent = if period_secs > 0.0 {

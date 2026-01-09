@@ -194,15 +194,13 @@ pub fn format_traceroute(result: &TracerouteResult) -> String {
             "\nTarget reached in {} hops.\n",
             result.hops.len()
         ));
+    } else if let Some((hop, ip)) = HopAnalyzer::identify_failing_hop(result) {
+        output.push_str(&format!(
+            "\nTarget NOT reached. Last responding hop: {} ({})\n",
+            hop, ip
+        ));
     } else {
-        if let Some((hop, ip)) = HopAnalyzer::identify_failing_hop(result) {
-            output.push_str(&format!(
-                "\nTarget NOT reached. Last responding hop: {} ({})\n",
-                hop, ip
-            ));
-        } else {
-            output.push_str("\nTarget NOT reached. No hops responded.\n");
-        }
+        output.push_str("\nTarget NOT reached. No hops responded.\n");
     }
 
     output

@@ -1,0 +1,9 @@
+# Cargo aliases for development workflow
+
+[alias]
+# Development environment shortcuts
+dev = "run -- --dev"
+dev-start = "run -- --dev start --foreground"
+dev-status = "run -- --dev status"
+dev-stats = "run -- --dev stats"
+dev-init = "run -- --dev init"

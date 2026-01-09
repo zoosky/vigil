@@ -1,8 +1,73 @@
 use crate::models::Target;
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
+use std::fmt;
 use std::path::PathBuf;
 use thiserror::Error;
+
+/// Runtime environment for Vigil
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Environment {
+    #[default]
+    Production,
+    Development,
+    Test,
+}
+
+impl Environment {
+    /// Determine environment from VIGIL_ENV variable
+    pub fn from_env() -> Self {
+        match std::env::var("VIGIL_ENV").as_deref() {
+            Ok("development") | Ok("dev") => Environment::Development,
+            Ok("test") => Environment::Test,
+            _ => Environment::Production,
+        }
+    }
+
+    /// Get the base data directory for this environment
+    pub fn data_dir(&self) -> Result<PathBuf, ConfigError> {
+        let proj_dirs =
+            ProjectDirs::from("ch", "kapptec", "vigil").ok_or(ConfigError::NoConfigDir)?;
+
+        let base = proj_dirs.data_dir().to_path_buf();
+
+        Ok(match self {
+            Environment::Production => base,
+            Environment::Development => base.join("dev"),
+            Environment::Test => base.join("test"),
+        })
+    }
+
+    /// Get the config file path for this environment
+    pub fn config_path(&self) -> Result<PathBuf, ConfigError> {
+        Ok(self.data_dir()?.join("config.toml"))
+    }
+
+    /// Get the database path for this environment
+    pub fn database_path(&self) -> Result<PathBuf, ConfigError> {
+        Ok(self.data_dir()?.join("monitor.db"))
+    }
+
+    /// Get the log file path for this environment
+    pub fn log_path(&self) -> Result<PathBuf, ConfigError> {
+        Ok(self.data_dir()?.join("monitor.log"))
+    }
+
+    /// Check if this is a development or test environment
+    pub fn is_dev(&self) -> bool {
+        matches!(self, Environment::Development | Environment::Test)
+    }
+}
+
+impl fmt::Display for Environment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Environment::Production => write!(f, "production"),
+            Environment::Development => write!(f, "development"),
+            Environment::Test => write!(f, "test"),
+        }
+    }
+}
 
 #[derive(Error, Debug)]
 pub enum ConfigError {
@@ -157,7 +222,12 @@ pub struct Config {
 impl Config {
     /// Load configuration from the default location or create default config
     pub fn load() -> Result<Self, ConfigError> {
-        let config_path = Self::config_path()?;
+        Self::load_for_env(&Environment::Production)
+    }
+
+    /// Load configuration for a specific environment
+    pub fn load_for_env(env: &Environment) -> Result<Self, ConfigError> {
+        let config_path = env.config_path()?;
 
         if config_path.exists() {
             let content = std::fs::read_to_string(&config_path)?;
@@ -170,7 +240,12 @@ impl Config {
 
     /// Save configuration to the default location
     pub fn save(&self) -> Result<(), ConfigError> {
-        let config_path = Self::config_path()?;
+        self.save_for_env(&Environment::Production)
+    }
+
+    /// Save configuration for a specific environment
+    pub fn save_for_env(&self, env: &Environment) -> Result<(), ConfigError> {
+        let config_path = env.config_path()?;
 
         if let Some(parent) = config_path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -181,40 +256,42 @@ impl Config {
         Ok(())
     }
 
-    /// Get the configuration file path
+    /// Get the configuration file path (for production)
     pub fn config_path() -> Result<PathBuf, ConfigError> {
-        let proj_dirs =
-            ProjectDirs::from("ch", "kapptec", "vigil").ok_or(ConfigError::NoConfigDir)?;
-
-        Ok(proj_dirs.config_dir().join("config.toml"))
+        Environment::Production.config_path()
     }
 
-    /// Get the data directory path
+    /// Get the data directory path (for production)
     pub fn data_dir() -> Result<PathBuf, ConfigError> {
-        let proj_dirs =
-            ProjectDirs::from("ch", "kapptec", "vigil").ok_or(ConfigError::NoConfigDir)?;
+        Environment::Production.data_dir()
+    }
 
-        Ok(proj_dirs.data_dir().to_path_buf())
+    /// Get the database path (from config or default for given environment)
+    pub fn database_path_for_env(&self, env: &Environment) -> Result<PathBuf, ConfigError> {
+        if let Some(ref path) = self.database.path {
+            Ok(path.clone())
+        } else {
+            env.database_path()
+        }
     }
 
     /// Get the database path (from config or default)
     pub fn database_path(&self) -> Result<PathBuf, ConfigError> {
-        if let Some(ref path) = self.database.path {
-            Ok(path.clone())
+        self.database_path_for_env(&Environment::Production)
+    }
+
+    /// Get the log file path for a specific environment
+    pub fn log_path_for_env(&self, env: &Environment) -> Result<Option<PathBuf>, ConfigError> {
+        if let Some(ref path) = self.logging.file {
+            Ok(Some(path.clone()))
         } else {
-            let data_dir = Self::data_dir()?;
-            Ok(data_dir.join("monitor.db"))
+            Ok(Some(env.log_path()?))
         }
     }
 
     /// Get the log file path (from config or default)
     pub fn log_path(&self) -> Result<Option<PathBuf>, ConfigError> {
-        if let Some(ref path) = self.logging.file {
-            Ok(Some(path.clone()))
-        } else {
-            let data_dir = Self::data_dir()?;
-            Ok(Some(data_dir.join("monitor.log")))
-        }
+        self.log_path_for_env(&Environment::Production)
     }
 
     /// Get all targets to monitor (including gateway if configured)
@@ -260,5 +337,53 @@ targets = [
         assert_eq!(config.monitor.degraded_threshold, 5);
         assert_eq!(config.targets.gateway, Some("192.168.1.1".to_string()));
         assert_eq!(config.targets.targets.len(), 1);
+    }
+
+    #[test]
+    fn test_environment_from_env() {
+        // Save original value
+        let original = std::env::var("VIGIL_ENV").ok();
+
+        // Test development
+        std::env::set_var("VIGIL_ENV", "dev");
+        assert_eq!(Environment::from_env(), Environment::Development);
+
+        std::env::set_var("VIGIL_ENV", "development");
+        assert_eq!(Environment::from_env(), Environment::Development);
+
+        // Test test
+        std::env::set_var("VIGIL_ENV", "test");
+        assert_eq!(Environment::from_env(), Environment::Test);
+
+        // Test production (default)
+        std::env::set_var("VIGIL_ENV", "production");
+        assert_eq!(Environment::from_env(), Environment::Production);
+
+        std::env::remove_var("VIGIL_ENV");
+        assert_eq!(Environment::from_env(), Environment::Production);
+
+        // Restore original value
+        if let Some(val) = original {
+            std::env::set_var("VIGIL_ENV", val);
+        }
+    }
+
+    #[test]
+    fn test_environment_paths() {
+        let dev = Environment::Development;
+        let dev_path = dev.data_dir().unwrap();
+        assert!(dev_path.to_string_lossy().contains("dev"));
+
+        let prod = Environment::Production;
+        let prod_path = prod.data_dir().unwrap();
+        assert!(!prod_path.to_string_lossy().contains("dev"));
+        assert!(!prod_path.to_string_lossy().contains("test"));
+    }
+
+    #[test]
+    fn test_environment_display() {
+        assert_eq!(Environment::Production.to_string(), "production");
+        assert_eq!(Environment::Development.to_string(), "development");
+        assert_eq!(Environment::Test.to_string(), "test");
     }
 }

@@ -4,13 +4,27 @@ pub mod db;
 pub mod models;
 pub mod monitor;
 
-use config::Config;
+use config::{Config, Environment};
 use std::path::Path;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
-/// Initialize the logging framework with daily log rotation
+/// Software version from Cargo.toml
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Database schema version - increment when adding migrations
+pub const DB_SCHEMA_VERSION: u32 = 1;
+
+/// Initialize the logging framework with daily log rotation (for production)
 pub fn init_logging(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
+    init_logging_for_env(config, &Environment::Production)
+}
+
+/// Initialize the logging framework with daily log rotation for a specific environment
+pub fn init_logging_for_env(
+    config: &Config,
+    env: &Environment,
+) -> Result<(), Box<dyn std::error::Error>> {
     let filter =
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&config.logging.level));
 
@@ -24,7 +38,7 @@ pub fn init_logging(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
         .compact();
 
     // File layer with daily rotation (if configured)
-    if let Ok(Some(log_path)) = config.log_path() {
+    if let Ok(Some(log_path)) = config.log_path_for_env(env) {
         if let Some(log_dir) = log_path.parent() {
             std::fs::create_dir_all(log_dir)?;
 
@@ -86,19 +100,30 @@ pub fn cleanup_old_logs(
 pub struct App {
     pub config: Config,
     pub db: db::Database,
+    pub environment: Environment,
 }
 
 impl App {
+    /// Create a new App for the production environment
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let config = Config::load()?;
-        init_logging(&config)?;
+        Self::with_env(Environment::Production)
+    }
 
-        let db_path = config.database_path()?;
+    /// Create a new App for a specific environment
+    pub fn with_env(env: Environment) -> Result<Self, Box<dyn std::error::Error>> {
+        let config = Config::load_for_env(&env)?;
+        init_logging_for_env(&config, &env)?;
+
+        let db_path = config.database_path_for_env(&env)?;
         let db = db::Database::open(&db_path)?;
 
         tracing::info!("Database opened at {:?}", db_path);
 
-        Ok(App { config, db })
+        Ok(App {
+            config,
+            db,
+            environment: env,
+        })
     }
 
     /// Create app with a custom database path (for testing)
@@ -109,7 +134,21 @@ impl App {
 
         let db = db::Database::open(db_path)?;
 
-        Ok(App { config, db })
+        Ok(App {
+            config,
+            db,
+            environment: Environment::Production,
+        })
+    }
+
+    /// Get the database path for this app's environment
+    pub fn db_path(&self) -> Result<std::path::PathBuf, config::ConfigError> {
+        self.config.database_path_for_env(&self.environment)
+    }
+
+    /// Get the config path for this app's environment
+    pub fn config_path(&self) -> Result<std::path::PathBuf, config::ConfigError> {
+        self.environment.config_path()
     }
 }
 

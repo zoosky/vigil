@@ -53,6 +53,7 @@ vigil outages -p 7d       # Outages in the last 7 days
 vigil stats -p 24h        # Statistics for the last 24 hours
 vigil trace 8.8.8.8       # Manual traceroute
 vigil service status      # Check if service is running
+vigil version -v          # Show version and environment info
 ```
 
 ## How It Works
@@ -124,12 +125,51 @@ name = "Gateway"
 
 ## Development
 
+Vigil supports isolated development and test environments to avoid affecting production data.
+
+### Environment Modes
+
+| Environment | Flag | Data Directory |
+|-------------|------|----------------|
+| Production | (default) | `ch.kapptec.vigil/` |
+| Development | `--dev` | `ch.kapptec.vigil/dev/` |
+| Test | `--env test` | `ch.kapptec.vigil/test/` |
+
+### Development Workflow
+
 ```bash
-# Run in development mode (isolated database)
-cargo run -- --dev start --foreground
+# Initialize dev environment (creates isolated config/database)
+vigil --dev init
+
+# Run commands in dev mode
+vigil --dev status
+vigil --dev start --foreground
+vigil --dev stats -p 24h
+
+# Or use cargo aliases
+cargo dev status
+cargo dev-start
+cargo dev-init
+
+# Using environment variable
+VIGIL_ENV=dev vigil status
+```
+
+### Other Commands
+
+```bash
+# Show version and environment info
+vigil version -v
+
+# Upgrade database schema (with automatic backup)
+vigil upgrade
+vigil upgrade --dry-run    # Preview changes
 
 # Run tests
 cargo test
+
+# Run QA checks (format, clippy, tests, docs)
+./scripts/qa.sh
 
 # Build release
 cargo build --release

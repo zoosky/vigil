@@ -4,7 +4,10 @@
       "Bash(cargo build:*)",
       "Bash(cargo run:*)",
       "Bash(cargo test:*)",
-      "Bash(timeout 5 cargo run:*)"
+      "Bash(timeout 5 cargo run:*)",
+      "Bash(./scripts/qa.sh:*)",
+      "Bash(cargo fmt:*)",
+      "Bash(cargo dev status:*)"
     ]
   }
 }

@@ -133,15 +133,17 @@ This will cause mixed failures and trigger the state machine without affecting r
 Recent Outages (last 1h)
 ═══════════════════════════════════════════════════════════
 
-Start Time           Duration  Culprit
-──────────────────────────────────────────────────────────────────────
-2024-01-15 14:23:45     1m 32s  Hop 2 10.0.0.1 (ISP Modem)
-                               Targets: 8.8.8.8, 1.1.1.1
-──────────────────────────────────────────────────────────────────────
+  ID  Start Time           Duration  Culprit
+───────────────────────────────────────────────────────────────────────────
+   1  2024-01-15 14:23:45     1m 32s  Hop 2 10.0.0.1 (ISP Modem)
+                                   Targets: 8.8.8.8, 1.1.1.1
+───────────────────────────────────────────────────────────────────────────
 
 Summary: 1 outage, 1m 32s total downtime
 Most common culprit: Hop 2 - ISP Modem (1 occurrence)
 ```
+
+Use the ID to get detailed view: `vigil outage 1`
 
 ### Outage Detail Output
 

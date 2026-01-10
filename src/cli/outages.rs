@@ -20,15 +20,18 @@ pub fn run(app: &App, last: &str) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Print table header
-    println!("{:<19}  {:>8}  Culprit", "Start Time", "Duration");
-    println!("{}", "─".repeat(70));
+    println!(
+        "{:>4}  {:<19}  {:>8}  Culprit",
+        "ID", "Start Time", "Duration"
+    );
+    println!("{}", "─".repeat(75));
 
     // Print each outage
     for outage in &outages {
         print_outage_row(outage);
     }
 
-    println!("{}", "─".repeat(70));
+    println!("{}", "─".repeat(75));
 
     // Summary
     let total_downtime: f64 = outages.iter().filter_map(|o| o.duration_secs).sum();
@@ -61,6 +64,10 @@ pub fn run(app: &App, last: &str) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn print_outage_row(outage: &Outage) {
+    let id = outage
+        .id
+        .map(|i| i.to_string())
+        .unwrap_or_else(|| "-".to_string());
     let start_time = outage.start_time.format("%Y-%m-%d %H:%M:%S").to_string();
 
     let duration = outage
@@ -77,10 +84,13 @@ fn print_outage_row(outage: &Outage) {
         (None, _) => "Unknown".to_string(),
     };
 
-    println!("{:<19}  {:>8}  {}", start_time, duration, culprit);
+    println!(
+        "{:>4}  {:<19}  {:>8}  {}",
+        id, start_time, duration, culprit
+    );
 
     // Print affected targets on separate line if present
     if !outage.affected_targets.is_empty() {
-        println!("{:29}  Targets: {}", "", outage.affected_targets.join(", "));
+        println!("{:35}Targets: {}", "", outage.affected_targets.join(", "));
     }
 }

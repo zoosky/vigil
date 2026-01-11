@@ -2,6 +2,7 @@
 name = "vigil"
 version = "0.1.0"
 edition = "2021"
+build = "build.rs"
 description = "Keep watch over your network - monitor connectivity and diagnose intermittent outages"
 authors = ["Zoo Sky"]
 license = "MIT"

@@ -12,8 +12,17 @@ use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 /// Software version from Cargo.toml
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// Git commit hash (short)
+pub const GIT_HASH: &str = env!("GIT_HASH");
+
+/// Build timestamp (ISO 8601 UTC)
+pub const BUILD_TIME: &str = env!("BUILD_TIME");
+
+/// Build target triple
+pub const BUILD_TARGET: &str = env!("TARGET");
+
 /// Database schema version - increment when adding migrations
-pub const DB_SCHEMA_VERSION: u32 = 2;
+pub const DB_SCHEMA_VERSION: u32 = 3;
 
 /// Initialize the logging framework with daily log rotation (for production)
 pub fn init_logging(config: &Config) -> Result<(), Box<dyn std::error::Error>> {

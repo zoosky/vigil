@@ -6,3 +6,4 @@ pub mod service;
 pub mod start;
 pub mod stats;
 pub mod status;
+pub mod version;

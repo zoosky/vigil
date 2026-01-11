@@ -1,6 +1,6 @@
 # 015 - Version Information Command
 
-**Status:** Proposed
+**Status:** Done
 
 ## Overview
 

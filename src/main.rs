@@ -6,14 +6,24 @@ use vigil::{
     detect_gateway,
     models::{interpret_hop, ConnectivityState, DiagnosisResult, TraceTrigger},
     monitor::{format_traceroute, ConnectivityTracker, HopAnalyzer, PingMonitor, StateEvent},
-    App, VERSION,
+    App,
 };
+
+/// Version string with git hash for --version flag
+const VERSION_STRING: &str = concat!(
+    env!("CARGO_PKG_VERSION"),
+    " (",
+    env!("GIT_HASH"),
+    " ",
+    env!("BUILD_TIME"),
+    ")"
+);
 
 #[derive(Parser)]
 #[command(name = "vigil")]
 #[command(
     author,
-    version,
+    version = VERSION_STRING,
     about = "Keep watch over your network - monitor connectivity and diagnose intermittent outages"
 )]
 struct Cli {
@@ -104,11 +114,11 @@ enum Commands {
     /// Initialize configuration and database
     Init,
 
-    /// Show version and environment info
+    /// Show version and build information
     Version {
-        /// Show detailed version info
-        #[arg(short, long)]
-        verbose: bool,
+        /// Output in JSON format for scripting
+        #[arg(long)]
+        json: bool,
     },
 
     /// Upgrade database schema
@@ -179,7 +189,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Trace { target } => cmd_trace(&target).await?,
         Commands::Service { action } => cmd_service(action)?,
         Commands::Cleanup { days } => cmd_cleanup(days, &env)?,
-        Commands::Version { verbose } => cmd_version(verbose, &env)?,
+        Commands::Version { json } => cmd_version(json, &env)?,
         Commands::Upgrade { dry_run, no_backup } => cmd_upgrade(dry_run, no_backup, &env)?,
     }
 
@@ -723,19 +733,8 @@ fn cmd_cleanup(days: Option<u32>, env: &Environment) -> Result<(), Box<dyn std::
     Ok(())
 }
 
-fn cmd_version(verbose: bool, env: &Environment) -> Result<(), Box<dyn std::error::Error>> {
-    println!("vigil {}", VERSION);
-
-    if verbose {
-        println!();
-        println!("Environment:     {}", env);
-        println!("Config:          {}", env.config_path()?.display());
-        println!("Database:        {}", env.database_path()?.display());
-        println!();
-        println!("Schema version:  {} (current)", vigil::DB_SCHEMA_VERSION);
-    }
-
-    Ok(())
+fn cmd_version(json: bool, env: &Environment) -> Result<(), Box<dyn std::error::Error>> {
+    cli::version::run(env, json)
 }
 
 fn cmd_upgrade(

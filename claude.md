@@ -25,6 +25,7 @@ This file provides context for Claude Code sessions working on this project.
 | 011 Dev Environment | Done | `config.rs` (Environment), `main.rs` (--dev flag) |
 | 013 Gateway-First Diagnosis | Done | `src/monitor/traceroute.rs`, `main.rs`, `cli/outage_detail.rs` |
 | 014 TCP/HTTP Connectivity | Done | `src/monitor/tcp.rs`, `src/monitor/http.rs`, `models.rs` |
+| 015 Version Information | Done | `build.rs`, `src/lib.rs`, `src/cli/version.rs` |
 
 ## Development Workflow
 

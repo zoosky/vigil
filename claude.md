@@ -130,6 +130,15 @@ vigil start --foreground
 
 ## Developer Guidelines
 
+### PR Workflow
+
+1. Always run `./scripts/qa.sh` before pushing
+2. **Test ALL changes manually before merging** - don't just rely on CI passing
+3. Test the actual functionality that was changed (e.g., `cargo run -- --dev start --foreground`)
+4. Use `/pr` command to create PRs with proper formatting
+
+### Attribution
+
 Never use any reference to Claude, Claude Code, Anthropic, or AI in any:
 
 - Pull request title or description

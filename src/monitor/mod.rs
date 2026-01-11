@@ -17,6 +17,8 @@ use crate::models::{MonitorMethod, PingResult, Target};
 pub async fn check_connectivity(target: &Target, timeout_ms: u64) -> PingResult {
     match target.method {
         MonitorMethod::Ping => ping::ping_target(&target.ip, &target.name, timeout_ms).await,
-        MonitorMethod::Tcp => tcp::check_tcp(&target.ip, &target.name, target.port, timeout_ms).await,
+        MonitorMethod::Tcp => {
+            tcp::check_tcp(&target.ip, &target.name, target.port, timeout_ms).await
+        }
     }
 }

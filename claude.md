@@ -21,6 +21,8 @@ This file provides context for Claude Code sessions working on this project.
 | 005 CLI Reporting | Done | `src/cli/helpers.rs`, `status.rs`, `outages.rs`, `stats.rs` |
 | 006 Polish & Service | Done | `src/cli/service.rs`, log rotation in `lib.rs` |
 | 011 Dev Environment | Done | `config.rs` (Environment), `main.rs` (--dev flag) |
+| 013 Gateway-First Diagnosis | Done | `src/monitor/traceroute.rs`, `main.rs`, `cli/outage_detail.rs` |
+| 014 TCP Monitoring | Done | `src/monitor/tcp.rs`, `models.rs`, `monitor/mod.rs` |
 
 ## Development Workflow
 
@@ -128,12 +130,15 @@ vigil start --foreground
 
 ## Developer Guidelines
 
-Never use any reference to Claude Code or Code.ai in any
+Never use any reference to Claude, Claude Code, Anthropic, or AI in any:
 
-- Pull request test
+- Pull request title or description
+- Commit message (no Co-Authored-By: Claude lines)
 - Issue
 - Specification
-- Code snipped or comment
+- Code snippet or comment
+
+All commits should appear as human-authored. Do not include AI attribution.
 
 ## User's Environment
 

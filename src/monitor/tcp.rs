@@ -119,7 +119,8 @@ mod tests {
         let refused = std::io::Error::new(std::io::ErrorKind::ConnectionRefused, "refused");
         assert_eq!(parse_tcp_error(&refused), "Connection refused");
 
-        let unreachable = std::io::Error::new(std::io::ErrorKind::NetworkUnreachable, "unreachable");
+        let unreachable =
+            std::io::Error::new(std::io::ErrorKind::NetworkUnreachable, "unreachable");
         assert_eq!(parse_tcp_error(&unreachable), "Network unreachable");
     }
 }

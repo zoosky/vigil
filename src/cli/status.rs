@@ -27,7 +27,10 @@ pub async fn run(app: &App) -> Result<(), Box<dyn std::error::Error>> {
             MonitorMethod::Ping => "[PING]".to_string(),
         };
 
-        println!("  {} {} {} ({}) - {}", status, method, target.name, target.ip, latency);
+        println!(
+            "  {} {} {} ({}) - {}",
+            status, method, target.name, target.ip, latency
+        );
     }
 
     // Get today's statistics

@@ -92,6 +92,8 @@ pub enum MonitorMethod {
     /// TCP connection check (recommended - reflects real app behavior)
     #[default]
     Tcp,
+    /// HTTP HEAD request (validates full HTTP connectivity)
+    Http,
 }
 
 impl std::fmt::Display for MonitorMethod {
@@ -99,6 +101,7 @@ impl std::fmt::Display for MonitorMethod {
         match self {
             MonitorMethod::Ping => write!(f, "PING"),
             MonitorMethod::Tcp => write!(f, "TCP"),
+            MonitorMethod::Http => write!(f, "HTTP"),
         }
     }
 }
@@ -151,6 +154,16 @@ impl Target {
             name: name.into(),
             ip: ip.into(),
             method: MonitorMethod::Tcp,
+            port,
+        }
+    }
+
+    /// Create a new target with HTTP method
+    pub fn new_http(name: impl Into<String>, host: impl Into<String>, port: u16) -> Self {
+        Self {
+            name: name.into(),
+            ip: host.into(),
+            method: MonitorMethod::Http,
             port,
         }
     }

@@ -127,19 +127,19 @@ impl Default for MonitorConfig {
 }
 
 fn default_ping_interval() -> u64 {
-    1000
+    2000 // 2 seconds - reduces router load
 }
 fn default_ping_timeout() -> u64 {
     2000
 }
 fn default_degraded_threshold() -> u32 {
-    3
+    5 // 5 failures before DEGRADED - prevents false positives
 }
 fn default_offline_threshold() -> u32 {
-    5
+    8 // 8 failures before OFFLINE - prevents false positives
 }
 fn default_recovery_threshold() -> u32 {
-    2
+    3 // 3 successes to recover
 }
 fn default_traceroute_interval() -> u64 {
     60
@@ -331,8 +331,8 @@ mod tests {
     #[test]
     fn test_default_config() {
         let config = Config::default();
-        assert_eq!(config.monitor.ping_interval_ms, 1000);
-        assert_eq!(config.monitor.degraded_threshold, 3);
+        assert_eq!(config.monitor.ping_interval_ms, 2000);
+        assert_eq!(config.monitor.degraded_threshold, 5);
         assert_eq!(config.targets.targets.len(), 2);
     }
 

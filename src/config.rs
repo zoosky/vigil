@@ -314,8 +314,9 @@ impl Config {
     pub fn all_targets(&self) -> Vec<Target> {
         let mut targets = Vec::new();
 
+        // Gateway uses PING since routers don't typically have HTTPS servers
         if let Some(ref gateway) = self.targets.gateway {
-            targets.push(Target::new("Gateway", gateway.clone()));
+            targets.push(Target::new_ping("Gateway", gateway.clone()));
         }
 
         targets.extend(self.targets.targets.clone());

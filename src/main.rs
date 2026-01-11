@@ -4,7 +4,7 @@ use vigil::{
     cli,
     config::{Config, Environment},
     detect_gateway,
-    models::{ConnectivityState, TraceTrigger},
+    models::{interpret_hop, ConnectivityState, DiagnosisResult, TraceTrigger},
     monitor::{format_traceroute, ConnectivityTracker, HopAnalyzer, PingMonitor, StateEvent},
     App, VERSION,
 };
@@ -350,19 +350,41 @@ async fn cmd_start(_foreground: bool, env: &Environment) -> Result<(), Box<dyn s
                                         current_degraded_event_id = Some(id);
                                         tracing::info!("Degraded event recorded with ID {}", id);
 
-                                        // Run traceroute on DEGRADED entry
+                                        // Run network diagnosis on DEGRADED entry
                                         let analyzer = HopAnalyzer::default();
                                         let trace_target = targets.first()
                                             .map(|t| t.ip.as_str())
                                             .unwrap_or("8.8.8.8");
+                                        let gateway = app.config.targets.gateway.as_deref();
 
-                                        println!("   Running traceroute to {}...", trace_target);
-                                        let trace_result = analyzer.trace(trace_target).await;
+                                        println!("   Running network diagnosis to {}...", trace_target);
+                                        let diagnostic = analyzer.diagnose(trace_target, gateway).await;
 
-                                        if let Some((hop, ip)) = HopAnalyzer::identify_failing_hop(&trace_result) {
-                                            println!("   Failing hop identified: {} ({})\n", hop, ip);
-                                        } else {
-                                            println!("   Could not identify failing hop\n");
+                                        // Display diagnosis result
+                                        match diagnostic.diagnosis {
+                                            DiagnosisResult::LocalNetworkDown => {
+                                                println!("   Diagnosis: LOCAL NETWORK DOWN");
+                                                println!("   Gateway {} is unreachable",
+                                                    diagnostic.gateway_ip.as_deref().unwrap_or("unknown"));
+                                                println!("   Check: router, WiFi connection, ethernet cable\n");
+                                            }
+                                            DiagnosisResult::IspIssue { failing_hop } => {
+                                                println!("   Diagnosis: ISP ISSUE at hop {} ({})", failing_hop, interpret_hop(failing_hop));
+                                                if diagnostic.gateway_reachable {
+                                                    println!("   Gateway OK ({:.1}ms)",
+                                                        diagnostic.gateway_latency_ms.unwrap_or(0.0));
+                                                }
+                                                println!();
+                                            }
+                                            DiagnosisResult::Healthy => {
+                                                println!("   Diagnosis: Connection recovered during diagnosis\n");
+                                            }
+                                            DiagnosisResult::Intermittent => {
+                                                println!("   Diagnosis: Intermittent connectivity\n");
+                                            }
+                                            DiagnosisResult::Unknown => {
+                                                println!("   Diagnosis: Unable to determine failure point\n");
+                                            }
                                         }
 
                                         // Save traceroute linked to degraded event
@@ -370,7 +392,7 @@ async fn cmd_start(_foreground: bool, env: &Environment) -> Result<(), Box<dyn s
                                             None,
                                             Some(id),
                                             TraceTrigger::StateChange,
-                                            &trace_result
+                                            &diagnostic.traceroute
                                         ) {
                                             tracing::error!("Failed to save traceroute: {}", e);
                                         }
@@ -386,26 +408,51 @@ async fn cmd_start(_foreground: bool, env: &Environment) -> Result<(), Box<dyn s
                                     outage.start_time.format("%H:%M:%S")
                                 );
 
-                                // Run traceroute to identify failing hop
+                                // Run network diagnosis to identify failing hop
                                 let analyzer = HopAnalyzer::default();
                                 let trace_target = targets.first()
                                     .map(|t| t.ip.as_str())
                                     .unwrap_or("8.8.8.8");
+                                let gateway = app.config.targets.gateway.as_deref();
 
-                                println!("   Running traceroute to {}...", trace_target);
-                                let trace_result = analyzer.trace(trace_target).await;
+                                println!("   Running network diagnosis to {}...", trace_target);
+                                let diagnostic = analyzer.diagnose(trace_target, gateway).await;
 
                                 let mut outage_to_save = outage.clone();
 
-                                // Identify and record failing hop
-                                if let Some((hop, ip)) = HopAnalyzer::identify_failing_hop(&trace_result) {
-                                    println!("   Failing hop identified: {} ({})\n", hop, ip);
-                                    outage_to_save.failing_hop = Some(hop);
-                                    outage_to_save.failing_hop_ip = Some(ip);
-                                } else if !trace_result.success {
-                                    println!("   Could not identify failing hop (all timeouts)\n");
-                                } else {
-                                    println!("   Traceroute succeeded (intermittent issue)\n");
+                                // Display and record diagnosis
+                                match diagnostic.diagnosis {
+                                    DiagnosisResult::LocalNetworkDown => {
+                                        println!("   Diagnosis: LOCAL NETWORK DOWN");
+                                        println!("   Gateway {} is unreachable",
+                                            diagnostic.gateway_ip.as_deref().unwrap_or("unknown"));
+                                        println!("   Check: router, WiFi connection, ethernet cable\n");
+                                        outage_to_save.failing_hop = Some(1);
+                                        outage_to_save.notes = Some("Local network down - gateway unreachable".to_string());
+                                    }
+                                    DiagnosisResult::IspIssue { failing_hop } => {
+                                        println!("   Diagnosis: ISP ISSUE at hop {} ({})", failing_hop, interpret_hop(failing_hop));
+                                        if diagnostic.gateway_reachable {
+                                            println!("   Gateway OK ({:.1}ms)",
+                                                diagnostic.gateway_latency_ms.unwrap_or(0.0));
+                                        }
+                                        println!();
+                                        outage_to_save.failing_hop = Some(failing_hop);
+                                        // Get the IP from the last responding hop
+                                        if let Some((_, ip)) = HopAnalyzer::identify_failing_hop(&diagnostic.traceroute) {
+                                            outage_to_save.failing_hop_ip = Some(ip);
+                                        }
+                                    }
+                                    DiagnosisResult::Healthy => {
+                                        println!("   Diagnosis: Connection recovered during diagnosis\n");
+                                    }
+                                    DiagnosisResult::Intermittent => {
+                                        println!("   Diagnosis: Intermittent connectivity\n");
+                                        outage_to_save.notes = Some("Intermittent connectivity".to_string());
+                                    }
+                                    DiagnosisResult::Unknown => {
+                                        println!("   Diagnosis: Unable to determine failure point\n");
+                                    }
                                 }
 
                                 // Save outage to database
@@ -430,7 +477,7 @@ async fn cmd_start(_foreground: bool, env: &Environment) -> Result<(), Box<dyn s
                                             Some(id),
                                             None,
                                             TraceTrigger::StateChange,
-                                            &trace_result
+                                            &diagnostic.traceroute
                                         ) {
                                             tracing::error!("Failed to save traceroute: {}", e);
                                         }
@@ -483,7 +530,7 @@ async fn cmd_start(_foreground: bool, env: &Environment) -> Result<(), Box<dyn s
                                 }
                             }
                             StateEvent::NoChange => {
-                                // Periodic traceroute during OFFLINE state
+                                // Periodic diagnosis during OFFLINE state
                                 if tracker.state() == ConnectivityState::Offline {
                                     if let Some(outage_id) = current_outage_id {
                                         if let Some(last_time) = last_traceroute_time {
@@ -494,22 +541,38 @@ async fn cmd_start(_foreground: bool, env: &Environment) -> Result<(), Box<dyn s
                                                 let trace_target = targets.first()
                                                     .map(|t| t.ip.as_str())
                                                     .unwrap_or("8.8.8.8");
+                                                let gateway = app.config.targets.gateway.as_deref();
 
-                                                tracing::info!("Running periodic traceroute to {}", trace_target);
-                                                let trace_result = analyzer.trace(trace_target).await;
+                                                tracing::info!("Running periodic diagnosis to {}", trace_target);
+                                                let diagnostic = analyzer.diagnose(trace_target, gateway).await;
+
+                                                // Log diagnosis result
+                                                match diagnostic.diagnosis {
+                                                    DiagnosisResult::LocalNetworkDown => {
+                                                        println!("\n   [Periodic] Diagnosis: LOCAL NETWORK DOWN");
+                                                    }
+                                                    DiagnosisResult::IspIssue { failing_hop } => {
+                                                        println!("\n   [Periodic] Diagnosis: ISP ISSUE at hop {} ({})",
+                                                            failing_hop, interpret_hop(failing_hop));
+                                                    }
+                                                    DiagnosisResult::Healthy => {
+                                                        println!("\n   [Periodic] Diagnosis: Connection recovered");
+                                                    }
+                                                    _ => {}
+                                                }
 
                                                 if let Err(e) = app.db.insert_traceroute(
                                                     Some(outage_id),
                                                     None,
                                                     TraceTrigger::Periodic,
-                                                    &trace_result
+                                                    &diagnostic.traceroute
                                                 ) {
                                                     tracing::error!("Failed to save periodic traceroute: {}", e);
                                                 } else {
                                                     last_traceroute_time = Some(std::time::Instant::now());
                                                     traceroute_count += 1;
                                                     tracing::info!(
-                                                        "Periodic traceroute saved ({}/{})",
+                                                        "Periodic diagnosis saved ({}/{})",
                                                         traceroute_count,
                                                         max_traceroutes
                                                     );

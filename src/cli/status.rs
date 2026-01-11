@@ -1,4 +1,5 @@
 use crate::cli::helpers::{format_duration_secs, progress_bar};
+use crate::models::MonitorMethod;
 use crate::monitor::PingMonitor;
 use crate::App;
 use chrono::{Duration, Utc};
@@ -7,20 +8,26 @@ pub async fn run(app: &App) -> Result<(), Box<dyn std::error::Error>> {
     println!("Network Monitor Status");
     println!("═══════════════════════════════════════════════════════════\n");
 
-    // Check current connectivity by pinging targets
+    // Check current connectivity using configured method (TCP or ICMP)
     let targets = app.config.all_targets();
     let monitor = PingMonitor::new(&app.config);
 
     println!("Target Health:");
     for target in &targets {
-        let result = monitor.ping(target).await;
+        let result = monitor.check(target).await;
         let status = if result.success { "✓" } else { "✗" };
         let latency = result
             .latency_ms
             .map(|l| format!("{:.1}ms", l))
             .unwrap_or_else(|| "timeout".to_string());
 
-        println!("  {} {} ({}) - {}", status, target.name, target.ip, latency);
+        // Show method indicator: [TCP:443] or [PING]
+        let method = match target.method {
+            MonitorMethod::Tcp => format!("[TCP:{}]", target.port),
+            MonitorMethod::Ping => "[PING]".to_string(),
+        };
+
+        println!("  {} {} {} ({}) - {}", status, method, target.name, target.ip, latency);
     }
 
     // Get today's statistics

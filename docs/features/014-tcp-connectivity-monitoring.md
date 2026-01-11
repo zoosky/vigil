@@ -1,6 +1,6 @@
 # 014 - TCP Connectivity Monitoring
 
-**Status:** Proposed
+**Status:** Implemented
 
 ## Problem Statement
 
@@ -282,18 +282,18 @@ pub async fn detect_icmp_rate_limiting(target: &str) -> bool {
 
 ## Tasks
 
-- [ ] Add `MonitorMethod` enum to config
-- [ ] Add `method` and `port` fields to Target
-- [ ] Implement `check_tcp()` function
-- [ ] Implement `check_http()` function (optional)
-- [ ] Create unified `check_connectivity()` dispatcher
-- [ ] Update `PingMonitor` to use unified interface
-- [ ] Update CLI output to show method
-- [ ] Add ICMP rate-limiting detection
-- [ ] Update default targets to use TCP
-- [ ] Add migration/upgrade notice for existing users
-- [ ] Add tests for TCP monitoring
-- [ ] Update documentation
+- [x] Add `MonitorMethod` enum to config
+- [x] Add `method` and `port` fields to Target
+- [x] Implement `check_tcp()` function
+- [ ] Implement `check_http()` function (optional, future enhancement)
+- [x] Create unified `check_connectivity()` dispatcher
+- [x] Update `PingMonitor` to use unified interface
+- [x] Update CLI output to show method
+- [ ] Add ICMP rate-limiting detection (optional, future enhancement)
+- [x] Update default targets to use TCP
+- [ ] Add migration/upgrade notice for existing users (optional)
+- [x] Add tests for TCP monitoring
+- [x] Update documentation
 
 ## Test Plan
 

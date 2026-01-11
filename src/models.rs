@@ -83,18 +83,75 @@ impl Outage {
     }
 }
 
+/// Monitoring method for connectivity checks
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum MonitorMethod {
+    /// ICMP ping (may be rate-limited by routers/ISPs)
+    Ping,
+    /// TCP connection check (recommended - reflects real app behavior)
+    #[default]
+    Tcp,
+}
+
+impl std::fmt::Display for MonitorMethod {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MonitorMethod::Ping => write!(f, "PING"),
+            MonitorMethod::Tcp => write!(f, "TCP"),
+        }
+    }
+}
+
+fn default_port() -> u16 {
+    443
+}
+
+fn default_method() -> MonitorMethod {
+    MonitorMethod::Tcp
+}
+
 /// A monitoring target
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Target {
     pub name: String,
     pub ip: String,
+    /// Monitoring method: ping or tcp
+    #[serde(default = "default_method")]
+    pub method: MonitorMethod,
+    /// Port for TCP method (default: 443)
+    #[serde(default = "default_port")]
+    pub port: u16,
 }
 
 impl Target {
+    /// Create a new target with TCP method (recommended)
     pub fn new(name: impl Into<String>, ip: impl Into<String>) -> Self {
         Self {
             name: name.into(),
             ip: ip.into(),
+            method: MonitorMethod::Tcp,
+            port: 443,
+        }
+    }
+
+    /// Create a new target with ICMP ping method
+    pub fn new_ping(name: impl Into<String>, ip: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            ip: ip.into(),
+            method: MonitorMethod::Ping,
+            port: 0,
+        }
+    }
+
+    /// Create a new target with TCP method and custom port
+    pub fn new_tcp(name: impl Into<String>, ip: impl Into<String>, port: u16) -> Self {
+        Self {
+            name: name.into(),
+            ip: ip.into(),
+            method: MonitorMethod::Tcp,
+            port,
         }
     }
 }

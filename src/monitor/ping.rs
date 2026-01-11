@@ -32,7 +32,12 @@ impl PingMonitor {
         }
     }
 
-    /// Run a single ping to a target
+    /// Run a single connectivity check to a target (uses TCP or Ping based on target config)
+    pub async fn check(&self, target: &Target) -> PingResult {
+        super::check_connectivity(target, self.timeout_ms).await
+    }
+
+    /// Run a single ping to a target (legacy method, use check() instead)
     pub async fn ping(&self, target: &Target) -> PingResult {
         ping_target(&target.ip, &target.name, self.timeout_ms).await
     }
@@ -50,10 +55,10 @@ impl PingMonitor {
             loop {
                 ticker.tick().await;
 
-                // Ping all targets concurrently
+                // Check all targets concurrently using the appropriate method (TCP or Ping)
                 let futures: Vec<_> = targets
                     .iter()
-                    .map(|t| ping_target(&t.ip, &t.name, timeout_ms))
+                    .map(|t| super::check_connectivity(t, timeout_ms))
                     .collect();
 
                 let results = futures::future::join_all(futures).await;
@@ -77,7 +82,7 @@ impl PingMonitor {
 }
 
 /// Execute a single ping to a target IP
-async fn ping_target(ip: &str, name: &str, timeout_ms: u64) -> PingResult {
+pub async fn ping_target(ip: &str, name: &str, timeout_ms: u64) -> PingResult {
     let timestamp = Utc::now();
 
     // macOS ping command: -c 1 (one packet), -W timeout in ms

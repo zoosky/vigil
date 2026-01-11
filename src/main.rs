@@ -4,7 +4,7 @@ use vigil::{
     cli,
     config::{Config, Environment},
     detect_gateway,
-    models::ConnectivityState,
+    models::{ConnectivityState, TraceTrigger},
     monitor::{format_traceroute, ConnectivityTracker, HopAnalyzer, PingMonitor, StateEvent},
     App, VERSION,
 };
@@ -60,6 +60,12 @@ enum Commands {
         /// Time period (e.g., "24h", "7d", "30d")
         #[arg(short, long, default_value = "24h")]
         last: String,
+    },
+
+    /// Show detailed information about a specific outage
+    Outage {
+        /// Outage ID to show details for
+        id: i64,
     },
 
     /// Show statistics
@@ -168,6 +174,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Start { foreground } => cmd_start(foreground, &env).await?,
         Commands::Status => cmd_status(&env).await?,
         Commands::Outages { last } => cmd_outages(&last, &env)?,
+        Commands::Outage { id } => cmd_outage_detail(id, &env)?,
         Commands::Stats { period } => cmd_stats(&period, &env)?,
         Commands::Trace { target } => cmd_trace(&target).await?,
         Commands::Service { action } => cmd_service(action)?,
@@ -293,6 +300,14 @@ async fn cmd_start(_foreground: bool, env: &Environment) -> Result<(), Box<dyn s
     let mut last_status: std::collections::HashMap<String, (bool, Option<f64>)> =
         std::collections::HashMap::new();
     let mut current_outage_id: Option<i64> = None;
+    let mut current_degraded_event_id: Option<i64> = None;
+
+    // Track periodic traceroutes during OFFLINE
+    let mut last_traceroute_time: Option<std::time::Instant> = None;
+    let mut traceroute_count: u32 = 0;
+    let traceroute_interval =
+        std::time::Duration::from_secs(app.config.monitor.traceroute_interval_secs);
+    let max_traceroutes = app.config.monitor.max_traceroutes_per_outage;
 
     loop {
         tokio::select! {
@@ -323,13 +338,49 @@ async fn cmd_start(_foreground: bool, env: &Environment) -> Result<(), Box<dyn s
 
                         // Handle state events
                         match event {
-                            StateEvent::Degraded { ref failing_targets } => {
+                            StateEvent::Degraded { ref failing_targets, ref degraded_event } => {
                                 println!(
-                                    "\n⚠️  STATE: DEGRADED - Failing targets: {}\n",
+                                    "\n⚠️  STATE: DEGRADED - Failing targets: {}",
                                     failing_targets.join(", ")
                                 );
+
+                                // Save degraded event to database
+                                match app.db.insert_degraded_event(degraded_event) {
+                                    Ok(id) => {
+                                        current_degraded_event_id = Some(id);
+                                        tracing::info!("Degraded event recorded with ID {}", id);
+
+                                        // Run traceroute on DEGRADED entry
+                                        let analyzer = HopAnalyzer::default();
+                                        let trace_target = targets.first()
+                                            .map(|t| t.ip.as_str())
+                                            .unwrap_or("8.8.8.8");
+
+                                        println!("   Running traceroute to {}...", trace_target);
+                                        let trace_result = analyzer.trace(trace_target).await;
+
+                                        if let Some((hop, ip)) = HopAnalyzer::identify_failing_hop(&trace_result) {
+                                            println!("   Failing hop identified: {} ({})\n", hop, ip);
+                                        } else {
+                                            println!("   Could not identify failing hop\n");
+                                        }
+
+                                        // Save traceroute linked to degraded event
+                                        if let Err(e) = app.db.insert_traceroute(
+                                            None,
+                                            Some(id),
+                                            TraceTrigger::StateChange,
+                                            &trace_result
+                                        ) {
+                                            tracing::error!("Failed to save traceroute: {}", e);
+                                        }
+                                    }
+                                    Err(e) => {
+                                        tracing::error!("Failed to record degraded event: {}", e);
+                                    }
+                                }
                             }
-                            StateEvent::Offline { ref outage } => {
+                            StateEvent::Offline { ref outage, ref degraded_event } => {
                                 println!(
                                     "\n🔴 STATE: OFFLINE - Outage started at {}",
                                     outage.start_time.format("%H:%M:%S")
@@ -363,8 +414,24 @@ async fn cmd_start(_foreground: bool, env: &Environment) -> Result<(), Box<dyn s
                                         current_outage_id = Some(id);
                                         tracing::info!("Outage recorded with ID {}", id);
 
-                                        // Also save traceroute
-                                        if let Err(e) = app.db.insert_traceroute(Some(id), &trace_result) {
+                                        // Update degraded event with escalation if present
+                                        if let Some(mut deg_event) = degraded_event.clone() {
+                                            deg_event.escalated_to_outage_id = Some(id);
+                                            if let Some(deg_id) = current_degraded_event_id.take() {
+                                                deg_event.id = Some(deg_id);
+                                                if let Err(e) = app.db.update_degraded_event(&deg_event) {
+                                                    tracing::error!("Failed to update degraded event: {}", e);
+                                                }
+                                            }
+                                        }
+
+                                        // Save traceroute linked to outage
+                                        if let Err(e) = app.db.insert_traceroute(
+                                            Some(id),
+                                            None,
+                                            TraceTrigger::StateChange,
+                                            &trace_result
+                                        ) {
                                             tracing::error!("Failed to save traceroute: {}", e);
                                         }
 
@@ -374,6 +441,10 @@ async fn cmd_start(_foreground: bool, env: &Environment) -> Result<(), Box<dyn s
                                             current.failing_hop = outage_to_save.failing_hop;
                                             current.failing_hop_ip = outage_to_save.failing_hop_ip.clone();
                                         }
+
+                                        // Reset traceroute tracking for periodic traces
+                                        last_traceroute_time = Some(std::time::Instant::now());
+                                        traceroute_count = 1; // Count the state_change traceroute
                                     }
                                     Err(e) => {
                                         tracing::error!("Failed to record outage: {}", e);
@@ -393,8 +464,61 @@ async fn cmd_start(_foreground: bool, env: &Environment) -> Result<(), Box<dyn s
                                         tracing::error!("Failed to update outage: {}", e);
                                     }
                                 }
+                                // Reset traceroute tracking
+                                last_traceroute_time = None;
+                                traceroute_count = 0;
                             }
-                            StateEvent::NoChange => {}
+                            StateEvent::DegradedRecovered { ref degraded_event } => {
+                                println!(
+                                    "\n🟢 STATE: ONLINE - Recovered from DEGRADED, duration: {:.1}s\n",
+                                    degraded_event.duration_secs.unwrap_or(0.0)
+                                );
+                                // Update degraded event in database
+                                if let Some(id) = current_degraded_event_id.take() {
+                                    let mut updated_event = degraded_event.clone();
+                                    updated_event.id = Some(id);
+                                    if let Err(e) = app.db.update_degraded_event(&updated_event) {
+                                        tracing::error!("Failed to update degraded event: {}", e);
+                                    }
+                                }
+                            }
+                            StateEvent::NoChange => {
+                                // Periodic traceroute during OFFLINE state
+                                if tracker.state() == ConnectivityState::Offline {
+                                    if let Some(outage_id) = current_outage_id {
+                                        if let Some(last_time) = last_traceroute_time {
+                                            if last_time.elapsed() >= traceroute_interval
+                                                && traceroute_count < max_traceroutes
+                                            {
+                                                let analyzer = HopAnalyzer::default();
+                                                let trace_target = targets.first()
+                                                    .map(|t| t.ip.as_str())
+                                                    .unwrap_or("8.8.8.8");
+
+                                                tracing::info!("Running periodic traceroute to {}", trace_target);
+                                                let trace_result = analyzer.trace(trace_target).await;
+
+                                                if let Err(e) = app.db.insert_traceroute(
+                                                    Some(outage_id),
+                                                    None,
+                                                    TraceTrigger::Periodic,
+                                                    &trace_result
+                                                ) {
+                                                    tracing::error!("Failed to save periodic traceroute: {}", e);
+                                                } else {
+                                                    last_traceroute_time = Some(std::time::Instant::now());
+                                                    traceroute_count += 1;
+                                                    tracing::info!(
+                                                        "Periodic traceroute saved ({}/{})",
+                                                        traceroute_count,
+                                                        max_traceroutes
+                                                    );
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
 
                         // Display ping result
@@ -454,6 +578,11 @@ async fn cmd_status(env: &Environment) -> Result<(), Box<dyn std::error::Error>>
 fn cmd_outages(last: &str, env: &Environment) -> Result<(), Box<dyn std::error::Error>> {
     let app = App::with_env(*env)?;
     cli::outages::run(&app, last)
+}
+
+fn cmd_outage_detail(id: i64, env: &Environment) -> Result<(), Box<dyn std::error::Error>> {
+    let app = App::with_env(*env)?;
+    cli::outage_detail::run(&app, id)
 }
 
 fn cmd_stats(period: &str, env: &Environment) -> Result<(), Box<dyn std::error::Error>> {

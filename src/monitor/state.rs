@@ -1,16 +1,24 @@
 use crate::config::MonitorConfig;
-use crate::models::{ConnectivityState, Outage, PingResult, Target};
+use crate::models::{ConnectivityState, DegradedEvent, Outage, PingResult, Target};
 use std::collections::HashMap;
 
 /// Event emitted when state changes
 #[derive(Debug, Clone)]
 pub enum StateEvent {
     /// Entered DEGRADED state - some targets failing
-    Degraded { failing_targets: Vec<String> },
-    /// Entered OFFLINE state - outage started
-    Offline { outage: Outage },
+    Degraded {
+        failing_targets: Vec<String>,
+        degraded_event: DegradedEvent,
+    },
+    /// Entered OFFLINE state - outage started (escalated from degraded)
+    Offline {
+        outage: Outage,
+        degraded_event: Option<DegradedEvent>,
+    },
     /// Recovered to ONLINE state - outage ended
     Recovered { outage: Outage },
+    /// Recovered from DEGRADED to ONLINE (no outage)
+    DegradedRecovered { degraded_event: DegradedEvent },
     /// State unchanged
     NoChange,
 }
@@ -58,6 +66,7 @@ pub struct ConnectivityTracker {
     config: MonitorConfig,
     target_states: HashMap<String, TargetState>,
     current_outage: Option<Outage>,
+    current_degraded_event: Option<DegradedEvent>,
 
     // Aggregate counters for state transitions
     aggregate_failures: u32,
@@ -77,6 +86,7 @@ impl ConnectivityTracker {
             config: config.clone(),
             target_states,
             current_outage: None,
+            current_degraded_event: None,
             aggregate_failures: 0,
             aggregate_successes: 0,
         }
@@ -114,12 +124,14 @@ impl ConnectivityTracker {
             ConnectivityState::Online => {
                 if self.aggregate_failures >= self.config.degraded_threshold {
                     self.state = ConnectivityState::Degraded;
+                    let degraded_event = self.start_degraded_event(failing_targets.clone());
                     tracing::warn!(
                         "State: ONLINE -> DEGRADED ({} consecutive failures)",
                         self.aggregate_failures
                     );
                     return StateEvent::Degraded {
                         failing_targets: failing_targets.clone(),
+                        degraded_event,
                     };
                 }
             }
@@ -127,20 +139,30 @@ impl ConnectivityTracker {
                 if all_healthy && self.aggregate_successes >= self.config.recovery_threshold {
                     self.state = ConnectivityState::Online;
                     self.aggregate_failures = 0;
+                    let degraded_event = self.end_degraded_event();
                     tracing::info!(
                         "State: DEGRADED -> ONLINE ({} consecutive successes)",
                         self.aggregate_successes
                     );
-                    return StateEvent::NoChange; // No outage to report
+                    if let Some(event) = degraded_event {
+                        return StateEvent::DegradedRecovered {
+                            degraded_event: event,
+                        };
+                    }
+                    return StateEvent::NoChange;
                 }
                 if self.aggregate_failures >= self.config.offline_threshold {
                     self.state = ConnectivityState::Offline;
+                    let degraded_event = self.escalate_degraded_event();
                     let outage = self.start_outage(failing_targets.clone());
                     tracing::error!(
                         "State: DEGRADED -> OFFLINE ({} consecutive failures) - Outage started",
                         self.aggregate_failures
                     );
-                    return StateEvent::Offline { outage };
+                    return StateEvent::Offline {
+                        outage,
+                        degraded_event,
+                    };
                 }
             }
             ConnectivityState::Offline => {
@@ -179,6 +201,35 @@ impl ConnectivityTracker {
         }
     }
 
+    /// Start a new degraded event
+    fn start_degraded_event(&mut self, affected_targets: Vec<String>) -> DegradedEvent {
+        let event = DegradedEvent::new(affected_targets);
+        self.current_degraded_event = Some(event.clone());
+        event
+    }
+
+    /// End the current degraded event (recovered without escalation)
+    fn end_degraded_event(&mut self) -> Option<DegradedEvent> {
+        if let Some(mut event) = self.current_degraded_event.take() {
+            event.end();
+            Some(event)
+        } else {
+            None
+        }
+    }
+
+    /// Escalate the current degraded event to an outage
+    fn escalate_degraded_event(&mut self) -> Option<DegradedEvent> {
+        if let Some(mut event) = self.current_degraded_event.take() {
+            // Note: The outage ID will be set after the outage is inserted in the database
+            // For now we just end the event - the caller should link it to the outage
+            event.end();
+            Some(event)
+        } else {
+            None
+        }
+    }
+
     /// Get current connectivity state
     pub fn state(&self) -> ConnectivityState {
         self.state
@@ -192,6 +243,11 @@ impl ConnectivityTracker {
     /// Get mutable reference to current outage (for updating)
     pub fn current_outage_mut(&mut self) -> Option<&mut Outage> {
         self.current_outage.as_mut()
+    }
+
+    /// Get current degraded event (if any)
+    pub fn current_degraded_event(&self) -> Option<&DegradedEvent> {
+        self.current_degraded_event.as_ref()
     }
 
     /// Get all target states
@@ -220,6 +276,8 @@ mod tests {
             degraded_threshold: 3,
             offline_threshold: 5,
             recovery_threshold: 2,
+            traceroute_interval_secs: 60,
+            max_traceroutes_per_outage: 10,
         }
     }
 

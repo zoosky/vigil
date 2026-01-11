@@ -102,6 +102,14 @@ pub struct MonitorConfig {
     /// Consecutive successes to recover to ONLINE
     #[serde(default = "default_recovery_threshold")]
     pub recovery_threshold: u32,
+
+    /// Interval between periodic traceroutes during OFFLINE state (seconds)
+    #[serde(default = "default_traceroute_interval")]
+    pub traceroute_interval_secs: u64,
+
+    /// Maximum traceroutes to store per outage
+    #[serde(default = "default_max_traceroutes")]
+    pub max_traceroutes_per_outage: u32,
 }
 
 impl Default for MonitorConfig {
@@ -112,6 +120,8 @@ impl Default for MonitorConfig {
             degraded_threshold: default_degraded_threshold(),
             offline_threshold: default_offline_threshold(),
             recovery_threshold: default_recovery_threshold(),
+            traceroute_interval_secs: default_traceroute_interval(),
+            max_traceroutes_per_outage: default_max_traceroutes(),
         }
     }
 }
@@ -130,6 +140,12 @@ fn default_offline_threshold() -> u32 {
 }
 fn default_recovery_threshold() -> u32 {
     2
+}
+fn default_traceroute_interval() -> u64 {
+    60
+}
+fn default_max_traceroutes() -> u32 {
+    10
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

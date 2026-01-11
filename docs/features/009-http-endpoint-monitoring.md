@@ -1,6 +1,6 @@
 # 009 - HTTP Endpoint Monitoring
 
-**Status:** Pending
+**Status:** Pending (basic HTTP connectivity implemented in Feature 014)
 
 ## Overview
 

@@ -20,9 +20,11 @@ This file provides context for Claude Code sessions working on this project.
 | 004 Hop Analysis | Done | `src/monitor/traceroute.rs` |
 | 005 CLI Reporting | Done | `src/cli/helpers.rs`, `status.rs`, `outages.rs`, `stats.rs` |
 | 006 Polish & Service | Done | `src/cli/service.rs`, log rotation in `lib.rs` |
+| 009 HTTP Endpoint Monitoring | Pending | Timing breakdown, cert tracking, `vigil http`/`vigil certs` commands |
+| 010 Enhanced Culprit Tracking | Done | `src/db.rs` (migrate_v2), `src/monitor/state.rs`, `src/cli/outage_detail.rs` |
 | 011 Dev Environment | Done | `config.rs` (Environment), `main.rs` (--dev flag) |
 | 013 Gateway-First Diagnosis | Done | `src/monitor/traceroute.rs`, `main.rs`, `cli/outage_detail.rs` |
-| 014 TCP/HTTP Monitoring | Done | `src/monitor/tcp.rs`, `src/monitor/http.rs`, `models.rs` |
+| 014 TCP/HTTP Connectivity | Done | `src/monitor/tcp.rs`, `src/monitor/http.rs`, `models.rs` |
 
 ## Development Workflow
 

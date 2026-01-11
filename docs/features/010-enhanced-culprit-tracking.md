@@ -1,6 +1,6 @@
 # 010 - Enhanced Culprit Tracking
 
-**Status:** Proposed
+**Status:** Done
 
 ## Problem Statement
 

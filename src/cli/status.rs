@@ -21,9 +21,10 @@ pub async fn run(app: &App) -> Result<(), Box<dyn std::error::Error>> {
             .map(|l| format!("{:.1}ms", l))
             .unwrap_or_else(|| "timeout".to_string());
 
-        // Show method indicator: [TCP:443] or [PING]
+        // Show method indicator: [TCP:443], [HTTP:443], or [PING]
         let method = match target.method {
             MonitorMethod::Tcp => format!("[TCP:{}]", target.port),
+            MonitorMethod::Http => format!("[HTTP:{}]", target.port),
             MonitorMethod::Ping => "[PING]".to_string(),
         };
 

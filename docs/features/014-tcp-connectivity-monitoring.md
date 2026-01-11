@@ -285,7 +285,7 @@ pub async fn detect_icmp_rate_limiting(target: &str) -> bool {
 - [x] Add `MonitorMethod` enum to config
 - [x] Add `method` and `port` fields to Target
 - [x] Implement `check_tcp()` function
-- [ ] Implement `check_http()` function (optional, future enhancement)
+- [x] Implement `check_http()` function
 - [x] Create unified `check_connectivity()` dispatcher
 - [x] Update `PingMonitor` to use unified interface
 - [x] Update CLI output to show method

@@ -97,7 +97,20 @@ pub fn run(env: &Environment, json: bool) -> Result<(), Box<dyn std::error::Erro
             println!("  Database:     {}{}", path.display(), exists);
         }
         if let Ok(path) = env.log_path() {
-            let exists = if path.exists() { "" } else { " (not found)" };
+            // Log files use daily rotation, so check for any monitor.log* files
+            let log_exists = if let Some(log_dir) = path.parent() {
+                log_dir
+                    .read_dir()
+                    .map(|entries| {
+                        entries
+                            .filter_map(|e| e.ok())
+                            .any(|e| e.file_name().to_string_lossy().starts_with("monitor.log"))
+                    })
+                    .unwrap_or(false)
+            } else {
+                false
+            };
+            let exists = if log_exists { "" } else { " (not found)" };
             println!("  Log:          {}{}", path.display(), exists);
         }
     }

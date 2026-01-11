@@ -1,4 +1,6 @@
-use crate::models::{DegradedEvent, Outage, PingResult, Stats, TraceTrigger, TracerouteResult};
+use crate::models::{
+    DegradedEvent, DiagnosisResult, Outage, PingResult, Stats, TraceTrigger, TracerouteResult,
+};
 use chrono::{DateTime, Duration, Utc};
 use rusqlite::{params, Connection};
 use std::path::Path;
@@ -9,6 +11,9 @@ use thiserror::Error;
 pub struct TracerouteWithMeta {
     pub result: TracerouteResult,
     pub trigger: TraceTrigger,
+    pub gateway_reachable: Option<bool>,
+    pub gateway_latency_ms: Option<f64>,
+    pub diagnosis: Option<DiagnosisResult>,
 }
 
 #[derive(Error, Debug)]
@@ -79,6 +84,10 @@ impl Database {
 
         if current_version < 2 {
             self.migrate_v2()?;
+        }
+
+        if current_version < 3 {
+            self.migrate_v3()?;
         }
 
         Ok(())
@@ -165,6 +174,26 @@ impl Database {
             -- Record migration
             INSERT INTO schema_version (version, description)
             VALUES (2, 'Enhanced culprit tracking: degraded_events table, traceroute triggers');
+            "#,
+        )?;
+
+        Ok(())
+    }
+
+    /// V3: Gateway-first diagnosis (Feature 013)
+    fn migrate_v3(&self) -> Result<(), DbError> {
+        tracing::info!("Applying database migration v3: Gateway-first diagnosis");
+
+        self.conn.execute_batch(
+            r#"
+            -- Add diagnosis columns to traceroutes table
+            ALTER TABLE traceroutes ADD COLUMN gateway_reachable INTEGER;
+            ALTER TABLE traceroutes ADD COLUMN gateway_latency_ms REAL;
+            ALTER TABLE traceroutes ADD COLUMN diagnosis TEXT;
+
+            -- Record migration
+            INSERT INTO schema_version (version, description)
+            VALUES (3, 'Gateway-first diagnosis: gateway status and diagnosis fields');
             "#,
         )?;
 
@@ -301,7 +330,7 @@ impl Database {
     ) -> Result<Vec<TracerouteWithMeta>, DbError> {
         let mut stmt = self.conn.prepare(
             r#"
-            SELECT timestamp, target, hops, success, trace_trigger
+            SELECT timestamp, target, hops, success, trace_trigger, gateway_reachable, gateway_latency_ms, diagnosis
             FROM traceroutes
             WHERE outage_id = ?1
             ORDER BY timestamp ASC
@@ -317,6 +346,9 @@ impl Database {
             let hops_json: String = row.get(2)?;
             let success: i32 = row.get(3)?;
             let trigger: Option<String> = row.get(4)?;
+            let gateway_reachable: Option<i32> = row.get(5)?;
+            let gateway_latency_ms: Option<f64> = row.get(6)?;
+            let diagnosis_str: Option<String> = row.get(7)?;
 
             let timestamp = DateTime::parse_from_rfc3339(&timestamp_str)
                 .map(|dt| dt.with_timezone(&Utc))
@@ -335,6 +367,9 @@ impl Database {
                 trigger: trigger
                     .and_then(|s| s.parse().ok())
                     .unwrap_or(TraceTrigger::StateChange),
+                gateway_reachable: gateway_reachable.map(|v| v != 0),
+                gateway_latency_ms,
+                diagnosis: diagnosis_str.and_then(|s| s.parse().ok()),
             });
         }
 
@@ -471,19 +506,24 @@ impl Database {
     }
 
     /// Insert a traceroute result with optional trigger and event linkage
+    #[allow(clippy::too_many_arguments)]
     pub fn insert_traceroute(
         &self,
         outage_id: Option<i64>,
         degraded_event_id: Option<i64>,
         trigger: TraceTrigger,
         trace: &TracerouteResult,
+        gateway_reachable: Option<bool>,
+        gateway_latency_ms: Option<f64>,
+        diagnosis: Option<&DiagnosisResult>,
     ) -> Result<(), DbError> {
         let hops_json = serde_json::to_string(&trace.hops)?;
+        let diagnosis_str = diagnosis.map(|d| d.to_string());
 
         self.conn.execute(
             r#"
-            INSERT INTO traceroutes (outage_id, degraded_event_id, trace_trigger, timestamp, target, hops, success)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            INSERT INTO traceroutes (outage_id, degraded_event_id, trace_trigger, timestamp, target, hops, success, gateway_reachable, gateway_latency_ms, diagnosis)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
             "#,
             params![
                 outage_id,
@@ -493,6 +533,9 @@ impl Database {
                 trace.target,
                 hops_json,
                 trace.success as i32,
+                gateway_reachable.map(|b| b as i32),
+                gateway_latency_ms,
+                diagnosis_str,
             ],
         )?;
         Ok(())

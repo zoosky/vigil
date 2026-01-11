@@ -312,10 +312,13 @@ async fn cmd_start(_foreground: bool, env: &Environment) -> Result<(), Box<dyn s
         std::time::Duration::from_secs(app.config.monitor.traceroute_interval_secs);
     let max_traceroutes = app.config.monitor.max_traceroutes_per_outage;
 
+    // Create shutdown signal handler ONCE before the loop
+    let mut shutdown = std::pin::pin!(signal::ctrl_c());
+
     loop {
         tokio::select! {
-            // Handle Ctrl+C
-            _ = signal::ctrl_c() => {
+            // Handle Ctrl+C - use &mut to poll without consuming
+            _ = &mut shutdown => {
                 println!("\n\nShutting down...");
 
                 // End any ongoing outage

@@ -398,7 +398,10 @@ async fn cmd_start(_foreground: bool, env: &Environment) -> Result<(), Box<dyn s
                                             None,
                                             Some(id),
                                             TraceTrigger::StateChange,
-                                            &diagnostic.traceroute
+                                            &diagnostic.traceroute,
+                                            Some(diagnostic.gateway_reachable),
+                                            diagnostic.gateway_latency_ms,
+                                            Some(&diagnostic.diagnosis),
                                         ) {
                                             tracing::error!("Failed to save traceroute: {}", e);
                                         }
@@ -483,7 +486,10 @@ async fn cmd_start(_foreground: bool, env: &Environment) -> Result<(), Box<dyn s
                                             Some(id),
                                             None,
                                             TraceTrigger::StateChange,
-                                            &diagnostic.traceroute
+                                            &diagnostic.traceroute,
+                                            Some(diagnostic.gateway_reachable),
+                                            diagnostic.gateway_latency_ms,
+                                            Some(&diagnostic.diagnosis),
                                         ) {
                                             tracing::error!("Failed to save traceroute: {}", e);
                                         }
@@ -571,7 +577,10 @@ async fn cmd_start(_foreground: bool, env: &Environment) -> Result<(), Box<dyn s
                                                     Some(outage_id),
                                                     None,
                                                     TraceTrigger::Periodic,
-                                                    &diagnostic.traceroute
+                                                    &diagnostic.traceroute,
+                                                    Some(diagnostic.gateway_reachable),
+                                                    diagnostic.gateway_latency_ms,
+                                                    Some(&diagnostic.diagnosis),
                                                 ) {
                                                     tracing::error!("Failed to save periodic traceroute: {}", e);
                                                 } else {

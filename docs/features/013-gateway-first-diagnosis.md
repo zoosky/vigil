@@ -1,6 +1,6 @@
 # 013 - Gateway-First Diagnosis
 
-**Status:** Proposed
+**Status:** Done
 
 ## Problem Statement
 

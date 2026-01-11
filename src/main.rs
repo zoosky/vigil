@@ -197,8 +197,15 @@ fn cmd_init(env: &Environment) -> Result<(), Box<dyn std::error::Error>> {
         println!("  {}\n", data_dir.display());
     }
 
-    // Create default config
-    let config = Config::default();
+    // Detect gateway first so we can add it to config
+    let detected_gateway = detect_gateway();
+
+    // Create config with auto-detected gateway
+    let mut config = Config::default();
+    if let Some(ref gateway) = detected_gateway {
+        config.targets.gateway = Some(gateway.clone());
+    }
+
     let config_path = env.config_path()?;
 
     if config_path.exists() {
@@ -215,21 +222,17 @@ fn cmd_init(env: &Environment) -> Result<(), Box<dyn std::error::Error>> {
     println!("Database initialized at:");
     println!("  {}\n", app.db_path()?.display());
 
-    // Detect gateway
-    if let Some(gateway) = detect_gateway() {
-        println!("Detected gateway: {}", gateway);
-        println!(
-            "  (Add to config with: vigil config set targets.gateway {})\n",
-            gateway
-        );
+    // Show gateway status
+    if let Some(gateway) = detected_gateway {
+        println!("Gateway auto-configured: {}", gateway);
     } else {
         println!("Could not auto-detect gateway.");
-        println!("  (Set manually with: vigil config set targets.gateway <IP>)\n");
+        println!("  (Set manually with: vigil config set targets.gateway <IP>)");
     }
 
-    println!("Targets to monitor:");
+    println!("\nTargets to monitor:");
     for target in app.config.all_targets() {
-        println!("  - {} ({})", target.name, target.ip);
+        println!("  - {} ({}) [{}]", target.name, target.ip, target.method);
     }
 
     if env.is_dev() {

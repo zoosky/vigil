@@ -188,3 +188,63 @@ pub fn interpret_hop(hop: u8) -> &'static str {
         _ => "ISP Backbone",
     }
 }
+
+/// Network diagnosis result
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DiagnosisResult {
+    /// All systems operational
+    Healthy,
+    /// Gateway unreachable - local network issue
+    LocalNetworkDown,
+    /// Gateway OK but upstream fails - ISP issue
+    IspIssue { failing_hop: u8 },
+    /// Intermittent - some hops responding inconsistently
+    Intermittent,
+    /// Cannot determine failure point
+    Unknown,
+}
+
+impl std::fmt::Display for DiagnosisResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DiagnosisResult::Healthy => write!(f, "Healthy"),
+            DiagnosisResult::LocalNetworkDown => write!(f, "Local network down"),
+            DiagnosisResult::IspIssue { failing_hop } => {
+                write!(f, "ISP issue at hop {}", failing_hop)
+            }
+            DiagnosisResult::Intermittent => write!(f, "Intermittent connectivity"),
+            DiagnosisResult::Unknown => write!(f, "Unknown"),
+        }
+    }
+}
+
+impl std::str::FromStr for DiagnosisResult {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Healthy" => Ok(DiagnosisResult::Healthy),
+            "Local network down" => Ok(DiagnosisResult::LocalNetworkDown),
+            "Intermittent connectivity" => Ok(DiagnosisResult::Intermittent),
+            "Unknown" => Ok(DiagnosisResult::Unknown),
+            s if s.starts_with("ISP issue at hop ") => {
+                let hop_str = s.trim_start_matches("ISP issue at hop ");
+                hop_str
+                    .parse::<u8>()
+                    .map(|hop| DiagnosisResult::IspIssue { failing_hop: hop })
+                    .map_err(|_| format!("Invalid hop number: {}", hop_str))
+            }
+            _ => Err(format!("Unknown diagnosis result: {}", s)),
+        }
+    }
+}
+
+/// Network diagnostic result with gateway status
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NetworkDiagnostic {
+    pub gateway_ip: Option<String>,
+    pub gateway_reachable: bool,
+    pub gateway_latency_ms: Option<f64>,
+    pub traceroute: TracerouteResult,
+    pub diagnosis: DiagnosisResult,
+}

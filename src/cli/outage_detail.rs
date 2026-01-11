@@ -113,12 +113,25 @@ fn print_traceroute(trace: &TracerouteWithMeta) {
         );
     }
 
-    // Summary line
+    // Summary line with diagnosis
     if trace.result.success {
-        println!("  → Connection recovered");
+        println!("  → Diagnosis: Connection recovered during trace");
     } else if let Some((hop, ip)) = last_responding_hop {
-        println!("  → Last responding: Hop {} ({})", hop, ip);
+        let next_hop = hop + 1;
+        println!(
+            "  → Diagnosis: ISP issue at hop {} ({}) - last responding: {} ({})",
+            next_hop,
+            interpret_hop(next_hop),
+            hop,
+            ip
+        );
     } else {
-        println!("  → All hops timed out");
+        // Check if first hop is the gateway (typically hop 1)
+        let first_hop_timeout = trace.result.hops.first().map(|h| h.timeout).unwrap_or(true);
+        if first_hop_timeout {
+            println!("  → Diagnosis: Local network down (gateway unreachable)");
+        } else {
+            println!("  → Diagnosis: All hops timed out (ISP issue)");
+        }
     }
 }

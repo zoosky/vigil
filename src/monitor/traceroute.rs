@@ -1,4 +1,6 @@
-use crate::models::{TracerouteHop, TracerouteResult};
+use crate::models::{
+    DiagnosisResult, NetworkDiagnostic, PingResult, TracerouteHop, TracerouteResult,
+};
 use chrono::Utc;
 use std::time::Duration;
 use tokio::process::Command;
@@ -83,6 +85,124 @@ impl HopAnalyzer {
             .find(|h| !h.timeout && h.ip.is_some());
 
         last_responding.map(|h| (h.hop_number, h.ip.clone().unwrap()))
+    }
+
+    /// Run full network diagnostic: gateway ping + traceroute
+    pub async fn diagnose(&self, target: &str, gateway: Option<&str>) -> NetworkDiagnostic {
+        // Step 1: Ping gateway if known
+        let (gateway_reachable, gateway_latency_ms) = if let Some(gw) = gateway {
+            let ping_result = self.ping_host(gw).await;
+            (ping_result.success, ping_result.latency_ms)
+        } else {
+            (true, None) // Assume reachable if no gateway configured
+        };
+
+        // Step 2: Run traceroute
+        let traceroute = self.trace(target).await;
+
+        // Step 3: Analyze and diagnose
+        let diagnosis = self.analyze_diagnosis(gateway_reachable, &traceroute);
+
+        NetworkDiagnostic {
+            gateway_ip: gateway.map(String::from),
+            gateway_reachable,
+            gateway_latency_ms,
+            traceroute,
+            diagnosis,
+        }
+    }
+
+    /// Analyze traceroute results and gateway status to determine diagnosis
+    fn analyze_diagnosis(
+        &self,
+        gateway_reachable: bool,
+        trace: &TracerouteResult,
+    ) -> DiagnosisResult {
+        // If traceroute succeeded, we're healthy
+        if trace.success {
+            return DiagnosisResult::Healthy;
+        }
+
+        // Count responding vs timeout hops
+        let responding_hops: Vec<_> = trace
+            .hops
+            .iter()
+            .filter(|h| !h.timeout && h.latency_ms.is_some())
+            .collect();
+
+        // All hops timeout
+        if responding_hops.is_empty() {
+            if !gateway_reachable {
+                return DiagnosisResult::LocalNetworkDown;
+            } else {
+                // Gateway responds but traceroute all timeouts
+                // This means ISP is blocking ICMP or issue at hop 2+
+                return DiagnosisResult::IspIssue { failing_hop: 2 };
+            }
+        }
+
+        // Some hops respond - find the last one
+        if let Some(last_good) = responding_hops.last() {
+            let failing_hop = last_good.hop_number + 1;
+            return DiagnosisResult::IspIssue { failing_hop };
+        }
+
+        DiagnosisResult::Unknown
+    }
+
+    /// Ping a host asynchronously
+    pub async fn ping_host(&self, host: &str) -> PingResult {
+        let timestamp = Utc::now();
+
+        // macOS ping: -c 1 (count), -W timeout_ms
+        let output = Command::new("ping")
+            .args(["-c", "1", "-W", "2000", host])
+            .output()
+            .await;
+
+        match output {
+            Ok(output) => {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let success = output.status.success();
+                let latency_ms = Self::parse_ping_latency(&stdout);
+
+                PingResult {
+                    target: host.to_string(),
+                    target_name: "Gateway".to_string(),
+                    timestamp,
+                    success,
+                    latency_ms,
+                    error: if success {
+                        None
+                    } else {
+                        Some("timeout".to_string())
+                    },
+                }
+            }
+            Err(e) => PingResult {
+                target: host.to_string(),
+                target_name: "Gateway".to_string(),
+                timestamp,
+                success: false,
+                latency_ms: None,
+                error: Some(e.to_string()),
+            },
+        }
+    }
+
+    /// Parse latency from ping output (e.g., "time=1.234 ms")
+    fn parse_ping_latency(output: &str) -> Option<f64> {
+        for line in output.lines() {
+            if let Some(pos) = line.find("time=") {
+                let rest = &line[pos + 5..];
+                if let Some(end) = rest.find(" ms") {
+                    if let Ok(ms) = rest[..end].parse::<f64>() {
+                        return Some(ms);
+                    }
+                }
+            }
+        }
+        None
     }
 }
 
@@ -407,5 +527,149 @@ mod tests {
         assert!(output.contains("192.168.1.1"));
         assert!(output.contains("8.8.8.8"));
         assert!(output.contains("Target reached in 2 hops"));
+    }
+
+    // Tests for diagnosis logic
+
+    #[test]
+    fn test_diagnosis_healthy() {
+        let analyzer = HopAnalyzer::default();
+        let trace = TracerouteResult {
+            target: "8.8.8.8".to_string(),
+            timestamp: Utc::now(),
+            hops: vec![
+                TracerouteHop {
+                    hop_number: 1,
+                    ip: Some("192.168.1.1".to_string()),
+                    hostname: None,
+                    latency_ms: Some(1.0),
+                    timeout: false,
+                },
+                TracerouteHop {
+                    hop_number: 2,
+                    ip: Some("8.8.8.8".to_string()),
+                    hostname: None,
+                    latency_ms: Some(10.0),
+                    timeout: false,
+                },
+            ],
+            success: true,
+        };
+
+        let diagnosis = analyzer.analyze_diagnosis(true, &trace);
+        assert_eq!(diagnosis, DiagnosisResult::Healthy);
+    }
+
+    #[test]
+    fn test_diagnosis_local_network_down() {
+        let analyzer = HopAnalyzer::default();
+        let trace = TracerouteResult {
+            target: "8.8.8.8".to_string(),
+            timestamp: Utc::now(),
+            hops: vec![
+                TracerouteHop {
+                    hop_number: 1,
+                    ip: None,
+                    hostname: None,
+                    latency_ms: None,
+                    timeout: true,
+                },
+                TracerouteHop {
+                    hop_number: 2,
+                    ip: None,
+                    hostname: None,
+                    latency_ms: None,
+                    timeout: true,
+                },
+            ],
+            success: false,
+        };
+
+        // Gateway unreachable + all hops timeout = local network down
+        let diagnosis = analyzer.analyze_diagnosis(false, &trace);
+        assert_eq!(diagnosis, DiagnosisResult::LocalNetworkDown);
+    }
+
+    #[test]
+    fn test_diagnosis_isp_issue_all_timeout() {
+        let analyzer = HopAnalyzer::default();
+        let trace = TracerouteResult {
+            target: "8.8.8.8".to_string(),
+            timestamp: Utc::now(),
+            hops: vec![
+                TracerouteHop {
+                    hop_number: 1,
+                    ip: None,
+                    hostname: None,
+                    latency_ms: None,
+                    timeout: true,
+                },
+                TracerouteHop {
+                    hop_number: 2,
+                    ip: None,
+                    hostname: None,
+                    latency_ms: None,
+                    timeout: true,
+                },
+            ],
+            success: false,
+        };
+
+        // Gateway reachable but traceroute all timeout = ISP issue at hop 2
+        let diagnosis = analyzer.analyze_diagnosis(true, &trace);
+        assert_eq!(diagnosis, DiagnosisResult::IspIssue { failing_hop: 2 });
+    }
+
+    #[test]
+    fn test_diagnosis_isp_issue_partial() {
+        let analyzer = HopAnalyzer::default();
+        let trace = TracerouteResult {
+            target: "8.8.8.8".to_string(),
+            timestamp: Utc::now(),
+            hops: vec![
+                TracerouteHop {
+                    hop_number: 1,
+                    ip: Some("192.168.1.1".to_string()),
+                    hostname: None,
+                    latency_ms: Some(1.0),
+                    timeout: false,
+                },
+                TracerouteHop {
+                    hop_number: 2,
+                    ip: Some("10.0.0.1".to_string()),
+                    hostname: None,
+                    latency_ms: Some(5.0),
+                    timeout: false,
+                },
+                TracerouteHop {
+                    hop_number: 3,
+                    ip: None,
+                    hostname: None,
+                    latency_ms: None,
+                    timeout: true,
+                },
+            ],
+            success: false,
+        };
+
+        // Some hops respond, last responding is hop 2 = ISP issue at hop 3
+        let diagnosis = analyzer.analyze_diagnosis(true, &trace);
+        assert_eq!(diagnosis, DiagnosisResult::IspIssue { failing_hop: 3 });
+    }
+
+    #[test]
+    fn test_parse_ping_latency() {
+        // macOS ping output format
+        let output = "PING 8.8.8.8 (8.8.8.8): 56 data bytes\n64 bytes from 8.8.8.8: icmp_seq=0 ttl=117 time=12.345 ms\n";
+        let latency = HopAnalyzer::parse_ping_latency(output);
+        assert!(latency.is_some());
+        assert!((latency.unwrap() - 12.345).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_parse_ping_latency_no_match() {
+        let output = "Request timeout for icmp_seq 0\n";
+        let latency = HopAnalyzer::parse_ping_latency(output);
+        assert!(latency.is_none());
     }
 }

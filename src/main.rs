@@ -294,6 +294,10 @@ async fn cmd_start(_foreground: bool, env: &Environment) -> Result<(), Box<dyn s
     println!("  Ping interval: {}ms", app.config.monitor.ping_interval_ms);
     println!("  Ping timeout: {}ms", app.config.monitor.ping_timeout_ms);
     println!(
+        "  Process timeout: {}ms",
+        app.config.monitor.ping_process_timeout_ms
+    );
+    println!(
         "  Degraded threshold: {} failures",
         app.config.monitor.degraded_threshold
     );

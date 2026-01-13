@@ -110,6 +110,13 @@ pub struct MonitorConfig {
     /// Maximum traceroutes to store per outage
     #[serde(default = "default_max_traceroutes")]
     pub max_traceroutes_per_outage: u32,
+
+    /// Hard timeout for ping subprocess in milliseconds.
+    /// If the ping process doesn't complete within this time, it is killed.
+    /// This prevents the monitor from blocking when network stack hangs.
+    /// Default: 3x ping_timeout_ms (e.g., 6000ms if ping_timeout is 2000ms)
+    #[serde(default = "default_process_timeout")]
+    pub ping_process_timeout_ms: u64,
 }
 
 impl Default for MonitorConfig {
@@ -122,6 +129,7 @@ impl Default for MonitorConfig {
             recovery_threshold: default_recovery_threshold(),
             traceroute_interval_secs: default_traceroute_interval(),
             max_traceroutes_per_outage: default_max_traceroutes(),
+            ping_process_timeout_ms: default_process_timeout(),
         }
     }
 }
@@ -146,6 +154,9 @@ fn default_traceroute_interval() -> u64 {
 }
 fn default_max_traceroutes() -> u32 {
     10
+}
+fn default_process_timeout() -> u64 {
+    6000 // 6 seconds - hard subprocess timeout to prevent hangs
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

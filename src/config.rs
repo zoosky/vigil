@@ -117,6 +117,12 @@ pub struct MonitorConfig {
     /// Default: 3x ping_timeout_ms (e.g., 6000ms if ping_timeout is 2000ms)
     #[serde(default = "default_process_timeout")]
     pub ping_process_timeout_ms: u64,
+
+    /// Ping interval during DEGRADED state in milliseconds.
+    /// Faster polling helps capture brief outages before they recover.
+    /// Default: 500ms (4x faster than normal)
+    #[serde(default = "default_degraded_ping_interval")]
+    pub degraded_ping_interval_ms: u64,
 }
 
 impl Default for MonitorConfig {
@@ -130,6 +136,7 @@ impl Default for MonitorConfig {
             traceroute_interval_secs: default_traceroute_interval(),
             max_traceroutes_per_outage: default_max_traceroutes(),
             ping_process_timeout_ms: default_process_timeout(),
+            degraded_ping_interval_ms: default_degraded_ping_interval(),
         }
     }
 }
@@ -141,10 +148,10 @@ fn default_ping_timeout() -> u64 {
     2000
 }
 fn default_degraded_threshold() -> u32 {
-    5 // 5 failures before DEGRADED - prevents false positives
+    2 // 2 failures before DEGRADED - fast detection for brief outages
 }
 fn default_offline_threshold() -> u32 {
-    8 // 8 failures before OFFLINE - prevents false positives
+    3 // 3 failures before OFFLINE - fast detection for brief outages
 }
 fn default_recovery_threshold() -> u32 {
     3 // 3 successes to recover
@@ -157,6 +164,9 @@ fn default_max_traceroutes() -> u32 {
 }
 fn default_process_timeout() -> u64 {
     6000 // 6 seconds - hard subprocess timeout to prevent hangs
+}
+fn default_degraded_ping_interval() -> u64 {
+    500 // 500ms - faster polling during degraded state to catch brief outages
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -343,7 +353,8 @@ mod tests {
     fn test_default_config() {
         let config = Config::default();
         assert_eq!(config.monitor.ping_interval_ms, 2000);
-        assert_eq!(config.monitor.degraded_threshold, 5);
+        assert_eq!(config.monitor.degraded_threshold, 2);
+        assert_eq!(config.monitor.degraded_ping_interval_ms, 500);
         assert_eq!(config.targets.targets.len(), 2);
     }
 
@@ -352,7 +363,7 @@ mod tests {
         let toml_str = r#"
 [monitor]
 ping_interval_ms = 500
-degraded_threshold = 5
+degraded_threshold = 2
 
 [targets]
 gateway = "192.168.1.1"
@@ -362,7 +373,7 @@ targets = [
 "#;
         let config: Config = toml::from_str(toml_str).unwrap();
         assert_eq!(config.monitor.ping_interval_ms, 500);
-        assert_eq!(config.monitor.degraded_threshold, 5);
+        assert_eq!(config.monitor.degraded_threshold, 2);
         assert_eq!(config.targets.gateway, Some("192.168.1.1".to_string()));
         assert_eq!(config.targets.targets.len(), 1);
     }

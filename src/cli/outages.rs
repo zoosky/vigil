@@ -93,12 +93,13 @@ fn print_outage_row(outage: &Outage) {
     });
 
     // Enhanced failing hop display with full IP and interpretation
+    // Note: failing_hop_ip is actually the last responding hop's IP
     let culprit = if let Some(label) = inferred_label {
         label
     } else {
         match (outage.failing_hop, &outage.failing_hop_ip) {
             (Some(hop), Some(ip)) => {
-                format!("Hop {} {} ({})", hop, ip, interpret_hop(hop))
+                format!("Hop {} (after {})", hop, ip)
             }
             (Some(hop), None) => format!("Hop {} ({})", hop, interpret_hop(hop)),
             (None, _) => "Unknown".to_string(),

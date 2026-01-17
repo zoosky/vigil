@@ -291,27 +291,37 @@ async fn cmd_start(_foreground: bool, env: &Environment) -> Result<(), Box<dyn s
     }
 
     println!("\nSettings:");
-    println!("  Ping interval: {}ms", app.config.monitor.ping_interval_ms);
+    println!(
+        "  Ping interval: {}ms ({}ms when degraded)",
+        app.config.monitor.ping_interval_ms, app.config.monitor.degraded_ping_interval_ms
+    );
     println!("  Ping timeout: {}ms", app.config.monitor.ping_timeout_ms);
     println!(
         "  Process timeout: {}ms",
         app.config.monitor.ping_process_timeout_ms
     );
     println!(
-        "  Degraded threshold: {} failures",
-        app.config.monitor.degraded_threshold
+        "  Degraded threshold: {} failures (~{}s)",
+        app.config.monitor.degraded_threshold,
+        (app.config.monitor.degraded_threshold as u64 * app.config.monitor.ping_interval_ms) / 1000
     );
     println!(
-        "  Offline threshold: {} failures",
-        app.config.monitor.offline_threshold
+        "  Offline threshold: {} failures (~{}s)",
+        app.config.monitor.offline_threshold,
+        (app.config.monitor.offline_threshold as u64 * app.config.monitor.ping_interval_ms) / 1000
     );
 
     println!("\nStarting monitoring... Press Ctrl+C to stop.\n");
 
     // Create ping monitor and state tracker
-    let monitor = PingMonitor::new(&app.config);
+    let mut monitor = PingMonitor::new(&app.config);
     let mut tracker = ConnectivityTracker::new(&app.config.monitor, &targets);
     let mut rx = monitor.start();
+
+    // Store intervals for adaptive polling
+    let normal_interval = std::time::Duration::from_millis(app.config.monitor.ping_interval_ms);
+    let degraded_interval =
+        std::time::Duration::from_millis(app.config.monitor.degraded_ping_interval_ms);
 
     // Track for display (only print on changes)
     let mut last_status: std::collections::HashMap<String, (bool, Option<f64>)> =
@@ -359,9 +369,12 @@ async fn cmd_start(_foreground: bool, env: &Environment) -> Result<(), Box<dyn s
                         // Handle state events
                         match event {
                             StateEvent::Degraded { ref failing_targets, ref degraded_event } => {
+                                // Switch to faster polling during degraded state
+                                monitor.set_interval(degraded_interval);
                                 println!(
-                                    "\n⚠️  STATE: DEGRADED - Failing targets: {}",
-                                    failing_targets.join(", ")
+                                    "\n⚠️  STATE: DEGRADED - Failing targets: {} (polling: {}ms)",
+                                    failing_targets.join(", "),
+                                    degraded_interval.as_millis()
                                 );
 
                                 // Save degraded event to database
@@ -467,14 +480,46 @@ async fn cmd_start(_foreground: bool, env: &Environment) -> Result<(), Box<dyn s
                                         }
                                     }
                                     DiagnosisResult::Healthy => {
-                                        println!("   Diagnosis: Connection recovered during diagnosis\n");
+                                        // Connection recovered during trace - infer culprit from affected targets
+                                        let gateway_ip = app.config.targets.gateway.as_deref();
+                                        let gateway_was_affected = gateway_ip.is_some_and(|gw| {
+                                            outage.affected_targets.iter().any(|t| t == gw)
+                                        });
+
+                                        if gateway_was_affected {
+                                            println!("   Diagnosis: Brief outage (recovered during trace)");
+                                            println!("   Inferred: Hop 1 - Local network issue (gateway unreachable)\n");
+                                            outage_to_save.failing_hop = Some(1);
+                                            outage_to_save.notes = Some("Inferred: Hop 1 - Local network issue (gateway unreachable)".to_string());
+                                        } else {
+                                            println!("   Diagnosis: Brief outage (recovered during trace)");
+                                            println!("   Inferred: Hop 2+ - ISP issue (gateway OK, external targets failed)\n");
+                                            outage_to_save.failing_hop = Some(2);
+                                            outage_to_save.notes = Some("Inferred: Hop 2+ - ISP issue (gateway OK, external targets failed)".to_string());
+                                        }
                                     }
                                     DiagnosisResult::Intermittent => {
                                         println!("   Diagnosis: Intermittent connectivity\n");
                                         outage_to_save.notes = Some("Intermittent connectivity".to_string());
                                     }
                                     DiagnosisResult::Unknown => {
-                                        println!("   Diagnosis: Unable to determine failure point\n");
+                                        // Unable to determine from traceroute - infer from affected targets
+                                        let gateway_ip = app.config.targets.gateway.as_deref();
+                                        let gateway_was_affected = gateway_ip.is_some_and(|gw| {
+                                            outage.affected_targets.iter().any(|t| t == gw)
+                                        });
+
+                                        if gateway_was_affected {
+                                            println!("   Diagnosis: Unable to determine from traceroute");
+                                            println!("   Inferred: Hop 1 - Local network issue (gateway unreachable)\n");
+                                            outage_to_save.failing_hop = Some(1);
+                                            outage_to_save.notes = Some("Inferred: Hop 1 - Local network issue (gateway unreachable)".to_string());
+                                        } else {
+                                            println!("   Diagnosis: Unable to determine from traceroute");
+                                            println!("   Inferred: Hop 2+ - ISP issue (gateway OK, external targets failed)\n");
+                                            outage_to_save.failing_hop = Some(2);
+                                            outage_to_save.notes = Some("Inferred: Hop 2+ - ISP issue (gateway OK, external targets failed)".to_string());
+                                        }
                                     }
                                 }
 
@@ -525,6 +570,8 @@ async fn cmd_start(_foreground: bool, env: &Environment) -> Result<(), Box<dyn s
                                 }
                             }
                             StateEvent::Recovered { ref outage } => {
+                                // Restore normal polling interval
+                                monitor.set_interval(normal_interval);
                                 println!(
                                     "\n🟢 STATE: ONLINE - Outage ended, duration: {:.1}s\n",
                                     outage.duration_secs.unwrap_or(0.0)
@@ -542,6 +589,8 @@ async fn cmd_start(_foreground: bool, env: &Environment) -> Result<(), Box<dyn s
                                 traceroute_count = 0;
                             }
                             StateEvent::DegradedRecovered { ref degraded_event } => {
+                                // Restore normal polling interval
+                                monitor.set_interval(normal_interval);
                                 println!(
                                     "\n🟢 STATE: ONLINE - Recovered from DEGRADED, duration: {:.1}s\n",
                                     degraded_event.duration_secs.unwrap_or(0.0)

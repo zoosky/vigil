@@ -2,10 +2,10 @@ use crate::config::Config;
 use crate::models::{PingResult, Target};
 use chrono::Utc;
 use std::process::Stdio;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::process::Command;
-use tokio::sync::mpsc;
-use tokio::time::interval;
+use tokio::sync::{mpsc, watch};
 
 /// Ping monitor that continuously pings multiple targets
 pub struct PingMonitor {
@@ -13,6 +13,8 @@ pub struct PingMonitor {
     interval: Duration,
     timeout_ms: u64,
     process_timeout_ms: u64,
+    /// Channel to dynamically update the ping interval
+    interval_tx: Option<Arc<watch::Sender<Duration>>>,
 }
 
 impl PingMonitor {
@@ -23,6 +25,7 @@ impl PingMonitor {
             interval: Duration::from_millis(config.monitor.ping_interval_ms),
             timeout_ms: config.monitor.ping_timeout_ms,
             process_timeout_ms: config.monitor.ping_process_timeout_ms,
+            interval_tx: None,
         }
     }
 
@@ -33,6 +36,15 @@ impl PingMonitor {
             interval,
             timeout_ms,
             process_timeout_ms: timeout_ms * 3, // Default to 3x ping timeout
+            interval_tx: None,
+        }
+    }
+
+    /// Update the ping interval dynamically (for adaptive polling during degraded state)
+    pub fn set_interval(&self, new_interval: Duration) {
+        if let Some(ref tx) = self.interval_tx {
+            let _ = tx.send(new_interval);
+            tracing::debug!("Ping interval updated to {}ms", new_interval.as_millis());
         }
     }
 
@@ -53,18 +65,28 @@ impl PingMonitor {
     }
 
     /// Start continuous monitoring, sending results to the returned receiver
-    pub fn start(&self) -> mpsc::Receiver<PingResult> {
+    pub fn start(&mut self) -> mpsc::Receiver<PingResult> {
         let (tx, rx) = mpsc::channel(100);
         let targets = self.targets.clone();
-        let interval_duration = self.interval;
+        let initial_interval = self.interval;
         let timeout_ms = self.timeout_ms;
         let process_timeout_ms = self.process_timeout_ms;
 
+        // Create watch channel for dynamic interval updates
+        let (interval_tx, mut interval_rx) = watch::channel(initial_interval);
+        self.interval_tx = Some(Arc::new(interval_tx));
+
         tokio::spawn(async move {
-            let mut ticker = interval(interval_duration);
+            let mut current_interval = initial_interval;
 
             loop {
-                ticker.tick().await;
+                // Wait for the current interval, checking for updates
+                tokio::time::sleep(current_interval).await;
+
+                // Check if interval was updated
+                if interval_rx.has_changed().unwrap_or(false) {
+                    current_interval = *interval_rx.borrow_and_update();
+                }
 
                 // Check all targets concurrently using the appropriate method (TCP or Ping)
                 // Use process timeout to prevent hanging on network issues

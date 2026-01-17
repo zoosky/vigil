@@ -279,6 +279,7 @@ mod tests {
             traceroute_interval_secs: 60,
             max_traceroutes_per_outage: 10,
             ping_process_timeout_ms: 6000,
+            degraded_ping_interval_ms: 500,
         }
     }
 

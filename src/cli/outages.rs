@@ -75,13 +75,34 @@ fn print_outage_row(outage: &Outage) {
         .map(format_duration_secs)
         .unwrap_or_else(|| "ongoing".to_string());
 
-    // Enhanced failing hop display with full IP and interpretation
-    let culprit = match (outage.failing_hop, &outage.failing_hop_ip) {
-        (Some(hop), Some(ip)) => {
-            format!("Hop {} {} ({})", hop, ip, interpret_hop(hop))
+    // Check if culprit was inferred - extract cleaner label from notes
+    let inferred_label = outage.notes.as_ref().and_then(|n| {
+        if n.starts_with("Inferred:") {
+            // Extract short label: "Hop 1 - Local network issue" -> "Local network*"
+            // or "Hop 2+ - ISP issue" -> "ISP issue*"
+            if n.contains("Local network") {
+                Some("Local network*".to_string())
+            } else if n.contains("ISP issue") {
+                Some("ISP issue*".to_string())
+            } else {
+                None
+            }
+        } else {
+            None
         }
-        (Some(hop), None) => format!("Hop {} ({})", hop, interpret_hop(hop)),
-        (None, _) => "Unknown".to_string(),
+    });
+
+    // Enhanced failing hop display with full IP and interpretation
+    let culprit = if let Some(label) = inferred_label {
+        label
+    } else {
+        match (outage.failing_hop, &outage.failing_hop_ip) {
+            (Some(hop), Some(ip)) => {
+                format!("Hop {} {} ({})", hop, ip, interpret_hop(hop))
+            }
+            (Some(hop), None) => format!("Hop {} ({})", hop, interpret_hop(hop)),
+            (None, _) => "Unknown".to_string(),
+        }
     };
 
     println!(

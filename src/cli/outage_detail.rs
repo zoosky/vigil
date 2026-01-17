@@ -64,12 +64,27 @@ pub fn run(app: &App, outage_id: i64) -> Result<(), Box<dyn std::error::Error>> 
 }
 
 fn print_culprit(outage: &Outage) {
-    let culprit = match (outage.failing_hop, &outage.failing_hop_ip) {
-        (Some(hop), Some(ip)) => {
-            format!("Hop {} - {} ({})", hop, ip, interpret_hop(hop))
+    // Check if culprit was inferred from ping context
+    // Inferred notes start with "Inferred:" and contain the description
+    let inferred_label = outage.notes.as_ref().and_then(|n| {
+        if n.starts_with("Inferred:") {
+            // Extract the label after "Inferred: " (e.g., "Hop 1 - Local network issue")
+            n.strip_prefix("Inferred: ").map(|s| s.to_string())
+        } else {
+            None
         }
-        (Some(hop), None) => format!("Hop {} ({})", hop, interpret_hop(hop)),
-        (None, _) => "Unknown".to_string(),
+    });
+
+    let culprit = if let Some(label) = inferred_label {
+        format!("{} (inferred)", label)
+    } else {
+        match (outage.failing_hop, &outage.failing_hop_ip) {
+            (Some(hop), Some(ip)) => {
+                format!("Hop {} - {} ({})", hop, ip, interpret_hop(hop))
+            }
+            (Some(hop), None) => format!("Hop {} ({})", hop, interpret_hop(hop)),
+            (None, _) => "Unknown".to_string(),
+        }
     };
     println!("Culprit:     {}", culprit);
 }

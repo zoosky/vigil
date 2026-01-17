@@ -493,8 +493,11 @@ async fn cmd_start(_foreground: bool, env: &Environment) -> Result<(), Box<dyn s
                                             outage_to_save.notes = Some("Inferred: Hop 1 - Local network issue (gateway unreachable)".to_string());
                                         } else {
                                             println!("   Diagnosis: Brief outage (recovered during trace)");
-                                            println!("   Inferred: Hop 2+ - ISP issue (gateway OK, external targets failed)\n");
+                                            println!("   Inferred: Hop 2+ - ISP issue (after gateway {})\n",
+                                                gateway_ip.unwrap_or("unknown"));
                                             outage_to_save.failing_hop = Some(2);
+                                            // Store gateway IP as the last responding hop
+                                            outage_to_save.failing_hop_ip = gateway_ip.map(String::from);
                                             outage_to_save.notes = Some("Inferred: Hop 2+ - ISP issue (gateway OK, external targets failed)".to_string());
                                         }
                                     }
@@ -516,8 +519,11 @@ async fn cmd_start(_foreground: bool, env: &Environment) -> Result<(), Box<dyn s
                                             outage_to_save.notes = Some("Inferred: Hop 1 - Local network issue (gateway unreachable)".to_string());
                                         } else {
                                             println!("   Diagnosis: Unable to determine from traceroute");
-                                            println!("   Inferred: Hop 2+ - ISP issue (gateway OK, external targets failed)\n");
+                                            println!("   Inferred: Hop 2+ - ISP issue (after gateway {})\n",
+                                                gateway_ip.unwrap_or("unknown"));
                                             outage_to_save.failing_hop = Some(2);
+                                            // Store gateway IP as the last responding hop
+                                            outage_to_save.failing_hop_ip = gateway_ip.map(String::from);
                                             outage_to_save.notes = Some("Inferred: Hop 2+ - ISP issue (gateway OK, external targets failed)".to_string());
                                         }
                                     }

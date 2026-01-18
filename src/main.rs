@@ -477,6 +477,10 @@ async fn cmd_start(_foreground: bool, env: &Environment) -> Result<(), Box<dyn s
                                         // Get the IP from the last responding hop
                                         if let Some((_, ip)) = HopAnalyzer::identify_failing_hop(&diagnostic.traceroute) {
                                             outage_to_save.failing_hop_ip = Some(ip);
+                                        } else if failing_hop == 2 && diagnostic.gateway_reachable {
+                                            // Traceroute timed out but gateway was verified - use gateway IP
+                                            let gateway_ip = app.config.targets.gateway.as_deref();
+                                            outage_to_save.failing_hop_ip = gateway_ip.map(String::from);
                                         }
                                     }
                                     DiagnosisResult::Healthy => {

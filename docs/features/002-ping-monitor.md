@@ -90,13 +90,13 @@ Use `tokio::spawn` for each target, collect results via `mpsc` channel.
 
 ## Tasks
 
-- [ ] Implement `ping()` function with shell-out
-- [ ] Parse ping output (regex or string parsing)
-- [ ] Implement `PingMonitor` struct
-- [ ] Add concurrent pinging with tokio
-- [ ] Create result channel/stream
-- [ ] Add unit tests with mock responses
-- [ ] Integration test with real ping
+- [x] Implement `ping()` function with shell-out
+- [x] Parse ping output (regex or string parsing)
+- [x] Implement `PingMonitor` struct
+- [x] Add concurrent pinging with tokio
+- [x] Create result channel/stream
+- [x] Add unit tests with mock responses
+- [x] Integration test with real ping
 
 ## Test Plan
 

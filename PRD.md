@@ -172,9 +172,38 @@
   - What if config file is malformed?
   - No documented recovery procedures
 
+  ## Resolution Tracking
+
+  | Issue | Section | Priority | Status | Addressed By |
+  |-------|---------|----------|--------|-------------|
+  | Notification blocking monitoring | 1 | Critical | Open | Feature 007 (pending) |
+  | Process timeout | 1 | Critical | **Resolved** | Feature 016 |
+  | Missing retry logic (TCP/HTTP) | 1 | Medium | Open | — |
+  | Threshold config conflicts | 2 | Medium | Open | Needs config validation |
+  | Race condition in periodic traceroute | 2 | High | Open | Needs audit in Feature 010 code |
+  | Flapping detection | 2 | Medium | Open | — |
+  | No transaction management | 3 | High | Open | — |
+  | Unbounded traceroute storage | 3 | Medium | Partial | Config exists, enforcement needs audit |
+  | Database lock contention | 3 | Medium | Open | — |
+  | Missing config validation | 4 | Medium | Open | — |
+  | Gateway auto-detection fallback | 4 | Low | Open | — |
+  | ICMP vs TCP method mismatch | 5 | Medium | Open | — |
+  | HTTP latency thresholds | 5 | Medium | Open | Feature 009 (pending) |
+  | No rate limiting on concurrency | 6 | Medium | Open | — |
+  | Log rotation timing | 6 | Low | Partial | Feature 006 (daily rotation) |
+  | Memory leak in quality metrics | 6 | Low | N/A | Feature 008 not implemented |
+  | macOS command parsing fragility | 7 | Medium | Open | — |
+  | launchd service race condition | 7 | Low | Open | Feature 006 |
+  | Command injection risk | 8 | **Highest** | Open | Needs audit of ping/traceroute shell-out |
+  | openssl shell-out for certs | 8 | Medium | N/A | Feature 009 not implemented |
+  | No rollback strategy | 9 | Low | Open | — |
+  | Backup without verification | 9 | Low | Open | Feature 011 |
+  | Error code standards | 10 | Low | Open | — |
+  | Disaster recovery docs | 10 | Low | Open | — |
+
   ## Summary of Critical Issues
 
-  1. Highest Priority: Command injection vulnerability needs immediate audit
+  1. **Highest Priority**: Command injection vulnerability needs immediate audit
   2. High Priority: Database transaction safety, state machine race conditions
   3. Medium Priority: Configuration validation, retry logic, method-specific thresholds
   4. Low Priority: Documentation gaps, error codes, rollback strategy

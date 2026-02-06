@@ -340,16 +340,16 @@ Paths (development environment):
 
 ## Tasks
 
-- [ ] Create `build.rs` with git hash and build time
-- [ ] Add build dependencies to Cargo.toml
-- [ ] Update lib.rs with GIT_HASH, BUILD_TIME constants
-- [ ] Update DB_SCHEMA_VERSION to 3
-- [ ] Add `Version` command to CLI
-- [ ] Create `src/cli/version.rs` module
-- [ ] Add JSON output support
-- [ ] Update `--version` flag to include git hash
-- [ ] Add tests for version info
-- [ ] Update documentation
+- [x] Create `build.rs` with git hash and build time
+- [x] Add build dependencies to Cargo.toml
+- [x] Update lib.rs with GIT_HASH, BUILD_TIME constants
+- [x] Update DB_SCHEMA_VERSION to 3
+- [x] Add `Version` command to CLI
+- [x] Create `src/cli/version.rs` module
+- [x] Add JSON output support
+- [x] Update `--version` flag to include git hash
+- [x] Add tests for version info
+- [x] Update documentation
 
 ## Best Practices Followed
 

@@ -1,6 +1,6 @@
 # 005 - CLI & Reporting
 
-**Status:** Pending
+**Status:** Done
 
 ## Overview
 
@@ -148,12 +148,12 @@ pub fn run(app: &App, period: &str) -> Result<()> {
 
 ## Tasks
 
-- [ ] Implement `parse_duration()` for "24h", "7d" format
-- [ ] Implement status command
-- [ ] Implement outages command with table formatting
-- [ ] Implement stats command with visualizations
-- [ ] Add color coding (green/yellow/red for states)
-- [ ] Handle empty results gracefully
+- [x] Implement `parse_duration()` for "24h", "7d" format
+- [x] Implement status command
+- [x] Implement outages command with table formatting
+- [x] Implement stats command with visualizations
+- [x] Add color coding (green/yellow/red for states)
+- [x] Handle empty results gracefully
 - [ ] Add export functionality (CSV/JSON)
 
 ## Duration Parsing

@@ -46,32 +46,30 @@ Edit the TOML file directly:
 
 ```toml
 [monitor]
-ping_interval_ms = 1000      # How often to ping (ms)
-ping_timeout_ms = 2000       # Ping timeout (ms)
-degraded_threshold = 3       # Failures before DEGRADED state
-offline_threshold = 5        # Failures before OFFLINE state
-recovery_threshold = 2       # Successes to recover
+ping_interval_ms = 2000           # How often to check (ms)
+ping_timeout_ms = 2000            # Ping/connection timeout (ms)
+degraded_threshold = 2            # Failures before DEGRADED state
+offline_threshold = 3             # Failures before OFFLINE state
+recovery_threshold = 3            # Successes to recover
+traceroute_interval_secs = 60     # Periodic traceroute during outage
+max_traceroutes_per_outage = 10   # Limit traceroutes stored per outage
+ping_process_timeout_ms = 6000    # Hard subprocess timeout
+degraded_ping_interval_ms = 500   # Faster polling during DEGRADED
 
 [targets]
-gateway = "192.168.1.1"      # Your router IP (auto-detected if omitted)
-
-[[targets.targets]]
-name = "Google DNS"
-ip = "8.8.8.8"
-
-[[targets.targets]]
-name = "Cloudflare"
-ip = "1.1.1.1"
-
-[[targets.targets]]
-name = "Quad9"               # Add custom targets
-ip = "9.9.9.9"
+gateway = "192.168.1.1"           # Your router IP (auto-detected if omitted)
+targets = [
+    { name = "Google DNS", ip = "8.8.8.8", method = "tcp", port = 443 },
+    { name = "Cloudflare", ip = "1.1.1.1", method = "tcp", port = 443 },
+    { name = "Quad9", ip = "9.9.9.9", method = "ping" },
+]
+# method: "tcp" (default, recommended), "ping" (ICMP), or "http"
 
 [database]
-retention_days = 90          # How long to keep data
+retention_days = 90               # How long to keep data
 
 [logging]
-level = "info"               # trace, debug, info, warn, error
+level = "info"                    # trace, debug, info, warn, error
 ```
 
 ## Commands
@@ -108,10 +106,17 @@ Shows:
 vigil outages
 
 # Last 7 days
-vigil outages --last 7d
+vigil outages -l 7d
 
 # Last 30 days
 vigil outages --last 30d
+```
+
+### View Outage Details
+
+```bash
+# Detailed view of a specific outage with traceroute history
+vigil outage 42
 ```
 
 ### View Statistics
@@ -121,7 +126,7 @@ vigil outages --last 30d
 vigil stats
 
 # Last week
-vigil stats --period 7d
+vigil stats -p 7d
 ```
 
 Shows:
@@ -177,12 +182,33 @@ When an outage occurs, the tool runs traceroute to identify where packets are be
 - **Failing Hop**: Network hop where packets were dropped
 - **Affected Targets**: Which monitored targets were unreachable
 
-## Running as a Service (macOS)
-
-To run automatically at login, create a launchd plist:
+### Version & Build Info
 
 ```bash
-# Create the plist (instructions in 006-polish-service.md)
+vigil version             # Human-readable build and schema info
+vigil version --json      # Machine-readable JSON output
+```
+
+### Development Mode
+
+```bash
+vigil --dev start -f      # Isolated dev database and config
+vigil --dev status        # Check dev environment status
+VIGIL_ENV=dev cargo run -- start  # Via environment variable
+```
+
+## Running as a Service (macOS)
+
+```bash
+# Install as launchd service (runs at login)
+vigil service install
+
+# Manage the service
+vigil service status      # Check if running
+vigil service uninstall   # Remove service
+
+# View service logs
+vigil service logs
 ```
 
 ## Troubleshooting
@@ -223,5 +249,5 @@ Logs are written to:
 View with:
 
 ```bash
-tail -f "~/Library/Application Support/ch.kapptec.vigil/monitor.log"
+tail -f ~/Library/Application\ Support/ch.kapptec.vigil/monitor.log
 ```

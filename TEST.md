@@ -1,6 +1,31 @@
-# Manual Testing Guide
+# Testing Guide
 
-This guide covers manual testing for Feature 010 (Enhanced Culprit Tracking).
+## Overview
+
+This guide covers automated and manual testing for Vigil.
+
+### Automated Tests
+
+```bash
+cargo test                      # Run all unit and integration tests
+cargo test -- --nocapture       # Run with stdout visible
+./scripts/qa.sh                 # Full QA: fmt, clippy, test, doc, build
+VIGIL_ENV=test cargo test       # Run with isolated test database
+```
+
+### Test Environments
+
+| Environment | Database Path | Usage |
+|-------------|--------------|-------|
+| Production | `~/Library/Application Support/ch.kapptec.vigil/monitor.db` | Live monitoring |
+| Development | `.../ch.kapptec.vigil/dev/monitor.db` | `--dev` flag or `VIGIL_ENV=dev` |
+| Test | `.../ch.kapptec.vigil/test/monitor.db` | `VIGIL_ENV=test` |
+
+---
+
+## Manual Testing: Feature 010 (Enhanced Culprit Tracking)
+
+This section covers manual testing for Feature 010.
 
 ## 1. Setup Development Environment
 

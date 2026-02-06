@@ -22,7 +22,7 @@ This file provides context for Claude Code sessions working on this project.
 | 006 Polish & Service | Done | `src/cli/service.rs`, log rotation in `lib.rs` |
 | 007 Alerts & Notifications | Pending | Desktop, webhook, command notifications |
 | 008 Latency Quality Metrics | Pending | Jitter, packet loss, MOS score |
-| 009 HTTP Endpoint Monitoring | Partial | Basic HTTP in 014; remaining: timing breakdown, cert tracking, `vigil http`/`vigil certs` |
+| 009 HTTP Endpoint Monitoring | Partial | Basic HTTP/TCP in 014; remaining: timing breakdown, cert tracking, `vigil http`/`vigil certs` |
 | 010 Enhanced Culprit Tracking | Done | `src/db.rs` (migrate_v2), `src/monitor/state.rs`, `src/cli/outage_detail.rs` |
 | 011 Dev Environment | Done | `config.rs` (Environment), `main.rs` (--dev flag) |
 | 012 CI Pipeline Fix | Done | `.github/workflows/ci.yml` |
@@ -30,6 +30,8 @@ This file provides context for Claude Code sessions working on this project.
 | 014 TCP/HTTP Connectivity | Done | `src/monitor/tcp.rs`, `src/monitor/http.rs`, `models.rs` |
 | 015 Version Information | Done | `build.rs`, `src/lib.rs`, `src/cli/version.rs` |
 | 016 Process Timeout | Done | `src/monitor/ping.rs`, `src/config.rs` (ping_process_timeout_ms) |
+| 017 Code Audit Fixes | Pending | Bug fixes, security hardening from code audit |
+| 018 Diagnostics & Patterns | Pending | Network diagnostics and pattern analysis |
 
 ## Development Workflow
 
@@ -100,12 +102,19 @@ cargo run -- --dev start -f     # Start monitoring (dev mode, foreground)
 
 Core:
 
-- `tokio` - Async runtime
-- `clap` - CLI parsing
-- `rusqlite` - SQLite database
-- `serde` / `toml` - Configuration
-- `chrono` - Timestamps
-- `tracing` - Logging
+- `tokio` - Async runtime (with signal handling)
+- `clap` - CLI parsing (derive macros)
+- `rusqlite` - SQLite database (bundled)
+- `serde` / `serde_json` / `toml` - Configuration and serialization
+- `chrono` - Timestamps (UTC internally)
+- `tracing` / `tracing-subscriber` / `tracing-appender` - Logging with file rotation
+- `thiserror` - Error types
+- `directories` / `dirs` - Platform-specific config paths
+
+Networking:
+
+- `reqwest` - HTTP connectivity checks (rustls-tls)
+- `futures` - Async utilities
 
 Display:
 
@@ -114,13 +123,26 @@ Display:
 
 ## Database Schema (v3)
 
+Five tables with versioned migrations (v1: initial, v2: enhanced culprit tracking, v3: gateway-first diagnosis):
+
 ```sql
-outages(id, start_time, end_time, duration_secs, affected_targets, failing_hop, failing_hop_ip, notes)
+-- Outage events (OFFLINE state)
+outages(id, start_time, end_time, duration_secs, affected_targets JSON,
+        failing_hop, failing_hop_ip, notes)
+
+-- Individual ping/connectivity check results (sampled)
 ping_log(id, timestamp, target, target_name, latency_ms, success)
-traceroutes(id, outage_id, degraded_event_id, trace_trigger, gateway_reachable,
-            gateway_latency_ms, diagnosis, timestamp, target, hops, success)
-degraded_events(id, start_time, end_time, duration_secs, escalated_to_outage_id,
-                affected_targets, notes)
+
+-- Traceroute snapshots linked to outages or degraded events
+traceroutes(id, outage_id, degraded_event_id, trace_trigger,
+            gateway_reachable, gateway_latency_ms, diagnosis,
+            timestamp, target, hops JSON, success)
+
+-- Degraded state transitions (pre-outage, added in v2)
+degraded_events(id, start_time, end_time, duration_secs,
+                escalated_to_outage_id, affected_targets JSON, notes)
+
+-- Migration tracking
 schema_version(version, applied_at, description)
 ```
 

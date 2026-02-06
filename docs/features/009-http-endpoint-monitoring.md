@@ -2,6 +2,8 @@
 
 **Status:** Partial — Basic HTTP/TCP connectivity implemented in [Feature 014](./014-tcp-connectivity-monitoring.md). Remaining: timing breakdown, certificate tracking, `vigil http` and `vigil certs` CLI commands.
 
+**See Also:** [Feature 014 — TCP Connectivity Monitoring](./014-tcp-connectivity-monitoring.md) implements the foundational TCP and HTTP connectivity checks that this feature builds upon. Feature 009 covers the advanced HTTP-specific capabilities not yet implemented.
+
 ## Overview
 
 Extend monitoring capabilities beyond ICMP ping to include HTTP/HTTPS endpoint checks. This provides a more complete picture of connectivity by testing the full network stack, including DNS resolution, TCP connection, TLS handshake, and HTTP response validation.

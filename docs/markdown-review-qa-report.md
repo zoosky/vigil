@@ -3,7 +3,6 @@
 **Date:** 2026-02-06
 **Scope:** All `*.md` files in the vigil project (27 files reviewed)
 **Purpose:** Functional review of documentation quality, consistency, and accuracy
-**Resolution:** All actionable tasks below have been addressed in follow-up commits.
 
 ---
 

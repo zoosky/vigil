@@ -3,21 +3,27 @@
 ## System Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                     Network Monitor                              │
-├─────────────────────────────────────────────────────────────────┤
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
-│  │ Ping Monitor │  │ Hop Analyzer │  │ Outage Detector      │  │
-│  │ (continuous) │  │ (on-demand)  │  │ (state machine)      │  │
-│  └──────┬───────┘  └──────┬───────┘  └──────────┬───────────┘  │
-│         │                 │                      │              │
-│         └─────────────────┼──────────────────────┘              │
-│                           ▼                                      │
-│                   ┌───────────────┐                              │
-│                   │ Event Logger  │                              │
-│                   │ (SQLite)      │                              │
-│                   └───────────────┘                              │
-└─────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                      Vigil Network Monitor                        │
+├──────────────────────────────────────────────────────────────────┤
+│  ┌───────────────────────┐  ┌──────────────────────────────────┐ │
+│  │ Connectivity Checker  │  │ Outage Detector (state machine)  │ │
+│  │ ┌───────┐ ┌─────┐    │  │ ONLINE → DEGRADED → OFFLINE      │ │
+│  │ │ Ping  │ │ TCP │    │  └──────────────┬───────────────────┘ │
+│  │ └───────┘ └─────┘    │                 │                     │
+│  │ ┌───────┐             │                 ▼                     │
+│  │ │ HTTP  │             │  ┌──────────────────────────────────┐ │
+│  │ └───────┘             │  │ Hop Analyzer (gateway-first)     │ │
+│  └───────────┬───────────┘  │ gateway ping → traceroute        │ │
+│              │               └──────────────┬───────────────────┘ │
+│              └──────────────────────────────┘                     │
+│                              │                                    │
+│                              ▼                                    │
+│                      ┌───────────────┐                            │
+│                      │ Event Logger  │                            │
+│                      │ (SQLite v3)   │                            │
+│                      └───────────────┘                            │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 ## Network Topology
@@ -33,18 +39,26 @@ By monitoring multiple targets and running traceroute during outages, we can ide
 
 ## Components
 
-### 1. Ping Monitor (`src/monitor/ping.rs`)
+### 1. Connectivity Checker (`src/monitor/`)
 
-- Continuously pings multiple targets at configurable intervals
-- Uses macOS `ping` command via shell-out
-- Parses output for latency and success/failure
+Unified dispatcher (`mod.rs`) routes checks to the appropriate method:
+
+| Method | File | Protocol | Use Case |
+|--------|------|----------|----------|
+| Ping | `ping.rs` | ICMP | Traditional, may be rate-limited |
+| TCP | `tcp.rs` | TCP SYN | Default — accurate for real-world connectivity |
+| HTTP | `http.rs` | HTTP HEAD | Full HTTP check with response validation |
+
+- Continuously checks multiple targets at configurable intervals (default 2s)
+- Hard process timeout (default 6s) kills hung subprocesses
+- Adaptive polling: 4x faster during DEGRADED state (500ms)
 - Runs concurrently using tokio tasks
 
 **Targets monitored:**
 
 - Local gateway (auto-detected or configured)
-- External DNS servers (8.8.8.8, 1.1.1.1)
-- Custom targets (user-configured)
+- External DNS servers (8.8.8.8, 1.1.1.1) via TCP:443 by default
+- Custom targets (user-configured, any method)
 
 ### 2. State Machine (`src/monitor/state.rs`)
 
@@ -68,42 +82,55 @@ Tracks connectivity state with hysteresis to avoid flapping:
 
 **Thresholds (configurable):**
 
-- `degraded_threshold`: 3 consecutive failures → DEGRADED
-- `offline_threshold`: 5 consecutive failures → OFFLINE
-- `recovery_threshold`: 2 consecutive successes → ONLINE
+- `degraded_threshold`: 2 consecutive failures → DEGRADED
+- `offline_threshold`: 3 consecutive failures → OFFLINE
+- `recovery_threshold`: 3 consecutive successes → ONLINE
 
 ### 3. Hop Analyzer (`src/monitor/traceroute.rs`)
 
-- Triggered when entering OFFLINE state
+- Gateway-first diagnosis: pings gateway before running traceroute
+- Triggered when entering DEGRADED or OFFLINE state
+- Periodic traceroutes during ongoing outages (configurable interval)
 - Runs macOS `traceroute` command
 - Parses output to identify failing hop
-- Stores results linked to outage events
+- Stores results linked to outage or degraded events
+- Diagnosis output: `LocalNetworkDown`, `IspIssue`, `Healthy`, `Intermittent`, `Unknown`
 
 ### 4. Database (`src/db.rs`)
 
-SQLite database with three tables:
+SQLite database (schema v3) with five tables:
 
-**outages** - Outage events
+**outages** - Outage events (OFFLINE state)
 
-```sql
-- id, start_time, end_time, duration_secs
-- affected_targets (JSON array)
-- failing_hop, failing_hop_ip
-- notes
+```
+id, start_time, end_time, duration_secs, affected_targets (JSON),
+failing_hop, failing_hop_ip, notes
+```
+
+**degraded_events** - Degraded state transitions (pre-outage)
+
+```
+id, start_time, end_time, duration_secs, escalated_to_outage_id,
+affected_targets (JSON), notes
 ```
 
 **ping_log** - Individual ping results (sampled)
 
-```sql
-- id, timestamp, target, target_name
-- latency_ms, success
+```
+id, timestamp, target, target_name, latency_ms, success
 ```
 
-**traceroutes** - Traceroute snapshots
+**traceroutes** - Traceroute snapshots linked to outages or degraded events
 
-```sql
-- id, outage_id, timestamp, target
-- hops (JSON array), success
+```
+id, outage_id, degraded_event_id, trace_trigger, gateway_reachable,
+gateway_latency_ms, diagnosis, timestamp, target, hops (JSON), success
+```
+
+**schema_version** - Migration tracking
+
+```
+version, applied_at, description
 ```
 
 ### 5. Configuration (`src/config.rs`)
@@ -122,26 +149,33 @@ Supports:
 ## Data Flow
 
 ```
-1. Ping Monitor sends pings every 1 second
+1. Connectivity Checker runs checks every 2 seconds (ping/TCP/HTTP)
                     │
                     ▼
 2. Results fed to State Machine
                     │
                     ├── State unchanged → Log ping result
                     │
-                    ├── State → OFFLINE
+                    ├── State → DEGRADED
                     │       │
                     │       ▼
-                    │   Trigger Hop Analyzer
+                    │   Create DegradedEvent + run gateway-first diagnosis
+                    │
+                    ├── State → OFFLINE (from DEGRADED)
                     │       │
                     │       ▼
-                    │   Create Outage record
+                    │   Create Outage record + run diagnosis
+                    │   Periodic traceroutes every N seconds
+                    │
+                    ├── State → ONLINE (from DEGRADED)
+                    │       │
+                    │       ▼
+                    │   End DegradedEvent (no outage created)
                     │
                     └── State → ONLINE (from OFFLINE)
                             │
                             ▼
-                        End Outage record
-                        (set end_time, duration)
+                        End Outage record (set end_time, duration)
 ```
 
 ## File Structure
@@ -149,21 +183,27 @@ Supports:
 ```
 src/
 ├── main.rs              # CLI entry point (clap)
-├── lib.rs               # Library root, logging init
-├── config.rs            # Configuration management
-├── db.rs                # SQLite operations
-├── models.rs            # Data structures
+├── lib.rs               # Library root, logging init, version constants
+├── config.rs            # Configuration management, environment support
+├── db.rs                # SQLite operations, migrations (v1→v3)
+├── models.rs            # Data structures (Target, Outage, PingResult, etc.)
 ├── monitor/
-│   ├── mod.rs
-│   ├── ping.rs          # Ping implementation
-│   ├── state.rs         # State machine
-│   └── traceroute.rs    # Traceroute implementation
+│   ├── mod.rs           # Unified connectivity dispatcher
+│   ├── ping.rs          # ICMP ping with process timeout
+│   ├── tcp.rs           # TCP connectivity checks
+│   ├── http.rs          # HTTP endpoint checks
+│   ├── state.rs         # State machine (ONLINE/DEGRADED/OFFLINE)
+│   └── traceroute.rs    # Traceroute + gateway-first diagnosis
 └── cli/
     ├── mod.rs
-    ├── start.rs         # Start command
-    ├── status.rs        # Status command
-    ├── outages.rs       # Outages command
-    └── stats.rs         # Stats command
+    ├── start.rs         # Start monitor daemon
+    ├── status.rs        # Current status display
+    ├── outages.rs       # List outages
+    ├── outage_detail.rs # Detailed outage view with traceroutes
+    ├── stats.rs         # Statistics reporting
+    ├── service.rs       # macOS launchd service management
+    ├── version.rs       # Version and build info
+    └── helpers.rs       # Shared CLI utilities
 ```
 
 ## macOS Integration

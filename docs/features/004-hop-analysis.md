@@ -104,14 +104,14 @@ Result: Failing hop = 2 (10.0.0.1), meaning hop 3 is unreachable.
 
 ## Tasks
 
-- [ ] Implement `trace()` function with shell-out
-- [ ] Parse traceroute output line by line
-- [ ] Handle various output formats
-- [ ] Implement `identify_failing_hop()`
-- [ ] Integrate with outage detection (Feature 003)
-- [ ] Implement `vigil trace` CLI command
-- [ ] Store traceroute results in database
-- [ ] Add unit tests with sample outputs
+- [x] Implement `trace()` function with shell-out
+- [x] Parse traceroute output line by line
+- [x] Handle various output formats
+- [x] Implement `identify_failing_hop()`
+- [x] Integrate with outage detection (Feature 003)
+- [x] Implement `vigil trace` CLI command
+- [x] Store traceroute results in database
+- [x] Add unit tests with sample outputs
 
 ## Test Plan
 

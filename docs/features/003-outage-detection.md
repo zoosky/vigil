@@ -143,13 +143,13 @@ fn process(&mut self, result: PingResult) -> StateEvent {
 
 ## Tasks
 
-- [ ] Define `ConnectivityTracker` struct
-- [ ] Implement per-target state tracking
-- [ ] Implement state transition logic
-- [ ] Implement `StateEvent` enum
-- [ ] Integrate with outage creation/completion
-- [ ] Add unit tests for all state transitions
-- [ ] Test edge cases (rapid flapping, partial failures)
+- [x] Define `ConnectivityTracker` struct
+- [x] Implement per-target state tracking
+- [x] Implement state transition logic
+- [x] Implement `StateEvent` enum
+- [x] Integrate with outage creation/completion
+- [x] Add unit tests for all state transitions
+- [x] Test edge cases (rapid flapping, partial failures)
 
 ## Test Plan
 

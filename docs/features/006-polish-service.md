@@ -1,6 +1,6 @@
 # 006 - Polish & Service
 
-**Status:** Pending
+**Status:** Done
 
 ## Overview
 
@@ -238,13 +238,13 @@ struct PingAggregator {
 
 ## Tasks
 
-- [ ] Implement service install/uninstall commands
-- [ ] Generate launchd plist dynamically
-- [ ] Add graceful shutdown with signal handling
-- [ ] Implement log rotation
-- [ ] Add periodic database cleanup
-- [ ] Implement ping aggregation for storage efficiency
-- [ ] Profile memory usage in long-running tests
+- [x] Implement service install/uninstall commands
+- [x] Generate launchd plist dynamically
+- [x] Add graceful shutdown with signal handling
+- [x] Implement log rotation
+- [x] Add periodic database cleanup
+- [x] Implement ping aggregation for storage efficiency
+- [x] Profile memory usage in long-running tests
 - [ ] Add health check endpoint (optional)
 
 ## Test Plan

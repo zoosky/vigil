@@ -20,9 +20,12 @@ This file provides context for Claude Code sessions working on this project.
 | 004 Hop Analysis | Done | `src/monitor/traceroute.rs` |
 | 005 CLI Reporting | Done | `src/cli/helpers.rs`, `status.rs`, `outages.rs`, `stats.rs` |
 | 006 Polish & Service | Done | `src/cli/service.rs`, log rotation in `lib.rs` |
-| 009 HTTP Endpoint Monitoring | Pending | Timing breakdown, cert tracking, `vigil http`/`vigil certs` commands |
+| 007 Alerts & Notifications | Pending | Desktop, webhook, command notifications |
+| 008 Latency Quality Metrics | Pending | Jitter, packet loss, MOS score |
+| 009 HTTP Endpoint Monitoring | Partial | Basic HTTP in 014; remaining: timing breakdown, cert tracking, `vigil http`/`vigil certs` |
 | 010 Enhanced Culprit Tracking | Done | `src/db.rs` (migrate_v2), `src/monitor/state.rs`, `src/cli/outage_detail.rs` |
 | 011 Dev Environment | Done | `config.rs` (Environment), `main.rs` (--dev flag) |
+| 012 CI Pipeline Fix | Done | `.github/workflows/ci.yml` |
 | 013 Gateway-First Diagnosis | Done | `src/monitor/traceroute.rs`, `main.rs`, `cli/outage_detail.rs` |
 | 014 TCP/HTTP Connectivity | Done | `src/monitor/tcp.rs`, `src/monitor/http.rs`, `models.rs` |
 | 015 Version Information | Done | `build.rs`, `src/lib.rs`, `src/cli/version.rs` |
@@ -87,9 +90,10 @@ route -n get default | grep gateway
 ## Testing
 
 ```bash
-cargo test           # Run all tests
-cargo run -- init    # Initialize config/db
-cargo run -- start   # Start monitoring (placeholder until 002)
+cargo test                      # Run all tests
+cargo run -- --dev init         # Initialize dev config/db
+cargo run -- --dev start -f     # Start monitoring (dev mode, foreground)
+./scripts/qa.sh                 # Full QA: fmt, clippy, test, doc, build
 ```
 
 ## Dependencies
@@ -108,12 +112,16 @@ Display:
 - `tabled` - Table formatting
 - `indicatif` - Progress bars
 
-## Database Schema
+## Database Schema (v3)
 
 ```sql
 outages(id, start_time, end_time, duration_secs, affected_targets, failing_hop, failing_hop_ip, notes)
 ping_log(id, timestamp, target, target_name, latency_ms, success)
-traceroutes(id, outage_id, timestamp, target, hops, success)
+traceroutes(id, outage_id, degraded_event_id, trace_trigger, gateway_reachable,
+            gateway_latency_ms, diagnosis, timestamp, target, hops, success)
+degraded_events(id, start_time, end_time, duration_secs, escalated_to_outage_id,
+                affected_targets, notes)
+schema_version(version, applied_at, description)
 ```
 
 ## Installation

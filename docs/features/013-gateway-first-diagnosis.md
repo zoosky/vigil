@@ -278,14 +278,14 @@ ALTER TABLE traceroutes ADD COLUMN diagnosis TEXT;
 
 ## Tasks
 
-- [ ] Add `NetworkDiagnostic` and `DiagnosisResult` to models.rs
-- [ ] Add `diagnose()` method to HopAnalyzer
-- [ ] Add `ping_host()` helper method
-- [ ] Update monitor loop to use `diagnose()` instead of `trace()`
-- [ ] Update database schema (migration v3)
-- [ ] Update outage detail CLI to show diagnosis
-- [ ] Update console output during monitoring
-- [ ] Add tests for diagnosis logic
+- [x] Add `NetworkDiagnostic` and `DiagnosisResult` to models.rs
+- [x] Add `diagnose()` method to HopAnalyzer
+- [x] Add `ping_host()` helper method
+- [x] Update monitor loop to use `diagnose()` instead of `trace()`
+- [x] Update database schema (migration v3)
+- [x] Update outage detail CLI to show diagnosis
+- [x] Update console output during monitoring
+- [x] Add tests for diagnosis logic
 
 ## Test Plan
 

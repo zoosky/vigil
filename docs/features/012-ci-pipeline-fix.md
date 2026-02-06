@@ -1,5 +1,7 @@
 # Feature 012: CI Pipeline Fix
 
+**Status:** Done
+
 ## Problem Statement
 
 The current GitHub Actions CI pipeline has issues:
@@ -181,11 +183,11 @@ Consider adding a separate release workflow that:
 
 ## Checklist
 
-- [ ] Fix `dtolnay/rust-action` → `dtolnay/rust-toolchain`
-- [ ] Remove Windows from matrix
-- [ ] Replace manual cache with `Swatinem/rust-cache@v2`
-- [ ] Combine lint jobs into single `check` job
-- [ ] Remove or keep MSRV check (decide)
-- [ ] Add job dependencies (`needs:`)
-- [ ] Verify CI passes on PR
-- [ ] Verify CI runtime is acceptable
+- [x] Fix `dtolnay/rust-action` → `dtolnay/rust-toolchain`
+- [x] Remove Windows from matrix
+- [x] Replace manual cache with `Swatinem/rust-cache@v2`
+- [x] Combine lint jobs into single `check` job
+- [x] Remove MSRV check (not publishing to crates.io)
+- [x] Add job dependencies (`needs:`)
+- [x] Verify CI passes on PR
+- [x] Verify CI runtime is acceptable

@@ -21,40 +21,52 @@ Foundation layer providing configuration management, database operations, loggin
 
 ```
 Cargo.toml
+build.rs                 # Git hash, build timestamp
+scripts/qa.sh            # Pre-push QA checks
 src/
-├── main.rs          # CLI entry point
-├── lib.rs           # Library root + init_logging()
-├── config.rs        # Config struct + load/save
-├── db.rs            # Database struct + CRUD operations
-├── models.rs        # Outage, PingResult, TracerouteHop, etc.
+├── main.rs              # CLI entry point
+├── lib.rs               # Library root + init_logging()
+├── config.rs            # Config struct + load/save
+├── db.rs                # Database struct + CRUD + migrations
+├── models.rs            # Outage, PingResult, Target, etc.
 ├── monitor/
-│   ├── mod.rs       # Module declarations
-│   ├── ping.rs      # Placeholder
-│   ├── state.rs     # Placeholder
-│   └── traceroute.rs # Placeholder
+│   ├── mod.rs           # Unified connectivity dispatcher
+│   ├── ping.rs          # ICMP ping via shell-out
+│   ├── state.rs         # State machine (ONLINE/DEGRADED/OFFLINE)
+│   ├── traceroute.rs    # Traceroute + gateway-first diagnosis
+│   ├── tcp.rs           # TCP connectivity checks
+│   └── http.rs          # HTTP endpoint checks
 └── cli/
-    ├── mod.rs       # Module declarations
-    ├── start.rs     # Placeholder
-    ├── status.rs    # Placeholder
-    ├── outages.rs   # Placeholder
-    └── stats.rs     # Placeholder
+    ├── mod.rs           # Module declarations
+    ├── start.rs         # Start monitor daemon
+    ├── status.rs        # Current status display
+    ├── outages.rs       # List outages
+    ├── outage_detail.rs # Detailed outage view with traceroutes
+    ├── stats.rs         # Statistics reporting
+    ├── service.rs       # macOS launchd service management
+    ├── version.rs       # Version and build info
+    └── helpers.rs       # Shared CLI utilities
 ```
 
 ## Configuration Schema
 
 ```toml
 [monitor]
-ping_interval_ms = 1000
+ping_interval_ms = 2000
 ping_timeout_ms = 2000
-degraded_threshold = 3
-offline_threshold = 5
-recovery_threshold = 2
+degraded_threshold = 2
+offline_threshold = 3
+recovery_threshold = 3
+traceroute_interval_secs = 60
+max_traceroutes_per_outage = 10
+ping_process_timeout_ms = 6000
+degraded_ping_interval_ms = 500
 
 [targets]
 gateway = "192.168.1.1"  # Optional, auto-detected
 targets = [
-    { name = "Google DNS", ip = "8.8.8.8" },
-    { name = "Cloudflare", ip = "1.1.1.1" },
+    { name = "Google DNS", ip = "8.8.8.8", method = "tcp", port = 443 },
+    { name = "Cloudflare", ip = "1.1.1.1", method = "tcp", port = 443 },
 ]
 
 [database]
@@ -66,7 +78,7 @@ level = "info"
 file = "..."  # Optional
 ```
 
-## Database Schema
+## Database Schema (v3)
 
 ```sql
 CREATE TABLE outages (
@@ -92,10 +104,31 @@ CREATE TABLE ping_log (
 CREATE TABLE traceroutes (
     id INTEGER PRIMARY KEY,
     outage_id INTEGER REFERENCES outages(id),
+    degraded_event_id INTEGER REFERENCES degraded_events(id),
+    trace_trigger TEXT DEFAULT 'state_change',
+    gateway_reachable INTEGER,
+    gateway_latency_ms REAL,
+    diagnosis TEXT,
     timestamp TEXT NOT NULL,
     target TEXT NOT NULL,
     hops TEXT NOT NULL,  -- JSON array
     success INTEGER NOT NULL
+);
+
+CREATE TABLE degraded_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    start_time TEXT NOT NULL,
+    end_time TEXT,
+    duration_secs REAL,
+    escalated_to_outage_id INTEGER,
+    affected_targets TEXT NOT NULL,
+    notes TEXT
+);
+
+CREATE TABLE schema_version (
+    version INTEGER PRIMARY KEY,
+    applied_at TEXT NOT NULL,
+    description TEXT
 );
 ```
 

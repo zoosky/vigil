@@ -1,6 +1,6 @@
 # 009 - HTTP Endpoint Monitoring
 
-**Status:** Pending (basic HTTP connectivity implemented in Feature 014)
+**Status:** Partial — Basic HTTP/TCP connectivity implemented in [Feature 014](./014-tcp-connectivity-monitoring.md). Remaining: timing breakdown, certificate tracking, `vigil http` and `vigil certs` CLI commands.
 
 ## Overview
 

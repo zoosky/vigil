@@ -295,21 +295,21 @@ pub struct TracerouteWithMeta {
 
 ## Tasks
 
-- [ ] Add `degraded_events` table to schema
-- [ ] Add columns to `traceroutes` table (`degraded_event_id`, `trace_trigger`)
-- [ ] Write database migration for existing installations
-- [ ] Implement `DegradedEvent` model and DB methods
-- [ ] Update `StateEvent::Degraded` to include event ID
-- [ ] Add `DegradedRecovered` state event
-- [ ] Implement traceroute on DEGRADED state entry
-- [ ] Implement periodic traceroutes during OFFLINE
-- [ ] Add configuration options (`traceroute_interval`, `max_traceroutes_per_outage`)
-- [ ] Update `outages` command to show full IP (no truncation)
-- [ ] Add `outage <id>` subcommand for detailed view
-- [ ] Format traceroute output with hop interpretation
-- [ ] Add unit tests for new state transitions
-- [ ] Add integration tests for periodic traceroutes
-- [ ] Update documentation
+- [x] Add `degraded_events` table to schema
+- [x] Add columns to `traceroutes` table (`degraded_event_id`, `trace_trigger`)
+- [x] Write database migration for existing installations
+- [x] Implement `DegradedEvent` model and DB methods
+- [x] Update `StateEvent::Degraded` to include event ID
+- [x] Add `DegradedRecovered` state event
+- [x] Implement traceroute on DEGRADED state entry
+- [x] Implement periodic traceroutes during OFFLINE
+- [x] Add configuration options (`traceroute_interval`, `max_traceroutes_per_outage`)
+- [x] Update `outages` command to show full IP (no truncation)
+- [x] Add `outage <id>` subcommand for detailed view
+- [x] Format traceroute output with hop interpretation
+- [x] Add unit tests for new state transitions
+- [x] Add integration tests for periodic traceroutes
+- [x] Update documentation
 
 ## Test Plan
 

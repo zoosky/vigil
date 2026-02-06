@@ -1,6 +1,6 @@
 # 011 - Development Environment & Upgrade Strategy
 
-**Status:** Implemented
+**Status:** Done
 
 ## Problem Statement
 
@@ -584,20 +584,20 @@ fn main() -> Result<()> {
 
 ## Tasks
 
-- [ ] Add `_meta` table to database schema
-- [ ] Implement `Environment` enum with path resolution
-- [ ] Add `--dev` and `--env` CLI flags
-- [ ] Create migration system in `src/db/migrations.rs`
-- [ ] Implement `upgrade` command with backup
-- [ ] Update `init` command for environment support
-- [ ] Add `version` command with verbose output
-- [ ] Add startup version check with warning
-- [ ] Create development helper scripts (Makefile/justfile)
-- [ ] Add `.cargo/config.toml` aliases
-- [ ] Write migration for existing databases (add `_meta` table)
-- [ ] Update documentation with development workflow
-- [ ] Add tests for migration system
-- [ ] Add tests for environment detection
+- [x] Add `_meta` table to database schema (implemented as `schema_version` table)
+- [x] Implement `Environment` enum with path resolution
+- [x] Add `--dev` and `--env` CLI flags
+- [x] Create migration system in `src/db.rs` (inline migrations v1→v3)
+- [x] Implement `upgrade` command with backup
+- [x] Update `init` command for environment support
+- [x] Add `version` command with verbose output
+- [x] Add startup version check with warning
+- [ ] Create development helper scripts (Makefile/justfile) — deferred, cargo aliases used instead
+- [x] Add `.cargo/config.toml` aliases
+- [x] Write migration for existing databases
+- [x] Update documentation with development workflow
+- [x] Add tests for migration system
+- [x] Add tests for environment detection
 
 ## Test Plan
 

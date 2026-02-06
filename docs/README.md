@@ -31,6 +31,8 @@ Implementation is organized into sequentially numbered features:
 | [014](./features/014-tcp-connectivity-monitoring.md) | TCP/HTTP Connectivity | Done | TCP and HTTP monitoring methods |
 | [015](./features/015-version-info.md) | Version Information | Done | Build info, schema status, JSON output |
 | [016](./features/016-process-timeout.md) | Process Timeout | Done | Subprocess hard timeout, slow ping detection |
+| [017](./features/017-code-audit-fixes.md) | Code Audit Fixes | Pending | Bug fixes, security hardening |
+| [018](./features/018-diagnostics.md) | Diagnostics & Patterns | Pending | Network diagnostics, pattern analysis |
 
 ## Quick Start
 

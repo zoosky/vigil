@@ -7,43 +7,48 @@ Home network with WLAN/ETH connection through a fiber router experiences intermi
 ## Architecture Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                     Vigil Network Monitor                       │
-├─────────────────────────────────────────────────────────────────┤
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐   │
-│  │ Ping Monitor │  │ Hop Analyzer │  │ Outage Detector      │   │
-│  │ (continuous) │  │ (on-demand)  │  │ (state machine)      │   │
-│  └──────┬───────┘  └──────┬───────┘  └──────────┬───────────┘   │
-│         │                 │                      │              │
-│         └─────────────────┼──────────────────────┘              │
-│                           ▼                                     │
-│                   ┌───────────────┐                             │
-│                   │ Event Logger  │                             │
-│                   │ (SQLite)      │                             │
-│                   └───────────────┘                             │
-└─────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                      Vigil Network Monitor                        │
+├──────────────────────────────────────────────────────────────────┤
+│  ┌───────────────────────┐  ┌──────────────────────────────────┐ │
+│  │ Connectivity Checker  │  │ Outage Detector (state machine)  │ │
+│  │ ┌───────┐ ┌─────┐    │  │ ONLINE → DEGRADED → OFFLINE      │ │
+│  │ │ Ping  │ │ TCP │    │  └──────────────┬───────────────────┘ │
+│  │ └───────┘ └─────┘    │                 │                     │
+│  │ ┌───────┐             │                 ▼                     │
+│  │ │ HTTP  │             │  ┌──────────────────────────────────┐ │
+│  │ └───────┘             │  │ Hop Analyzer (gateway-first)     │ │
+│  └───────────┬───────────┘  │ gateway ping → traceroute        │ │
+│              │               └──────────────┬───────────────────┘ │
+│              └──────────────────────────────┘                     │
+│                              │                                    │
+│                              ▼                                    │
+│                      ┌───────────────┐                            │
+│                      │ Event Logger  │                            │
+│                      │ (SQLite v3)   │                            │
+│                      └───────────────┘                            │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 ## Network Topology to Monitor
 
 ```
-[This Machine] → [Local Gateway/Router] → [ Fiber Router] → [ISP] → [Internet]
-     hop 0            hop 1                    hop 2              hop 3+    target
+[This Machine] → [Local Gateway/Router] → [Fiber Router] → [ISP] → [Internet]
+     hop 0            hop 1                   hop 2          hop 3+    target
 ```
 
 ## Core Components
 
-### 1. Multi-Target Ping Monitor
+### 1. Multi-Target Connectivity Checker
 
-Monitor multiple targets to isolate failure points:
+Monitor multiple targets using configurable methods (TCP, ping, HTTP):
 
-| Target | Purpose | Interval |
-|--------|---------|----------|
-| Gateway (e.g., 192.168.1.1) | Local network health | 1s |
-| Fiber router (if separate IP) | Router health | 1s |
-| 8.8.8.8 (Google DNS) | Internet connectivity | 1s |
-| 1.1.1.1 (Cloudflare DNS) | Redundant internet check | 1s |
-| Custom target (configurable) | User-defined | 1s |
+| Target | Purpose | Method | Interval |
+|--------|---------|--------|----------|
+| Gateway (auto-detected) | Local network health | Ping | 2s |
+| 8.8.8.8 (Google DNS) | Internet connectivity | TCP:443 | 2s |
+| 1.1.1.1 (Cloudflare DNS) | Redundant internet check | TCP:443 | 2s |
+| Custom target (configurable) | User-defined | Any | 2s |
 
 ### 2. Outage Detection State Machine
 
@@ -51,66 +56,90 @@ Monitor multiple targets to isolate failure points:
                     ┌─────────────────┐
                     │     ONLINE      │
                     └────────┬────────┘
-                             │ ping fails (threshold: 3 consecutive)
+                             │ N consecutive failures (default: 2)
                              ▼
                     ┌─────────────────┐
-                    │    DEGRADED     │──── ping succeeds ────┐
-                    └────────┬────────┘                       │
-                             │ ping fails (threshold: 5 consecutive)
-                             ▼                                │
-                    ┌─────────────────┐                       │
-              ┌─────│    OFFLINE      │───────────────────────┘
-              │     └─────────────────┘   ping succeeds (2 consecutive)
+                    │    DEGRADED     │──── K successes ────┐
+                    └────────┬────────┘   (default: 3)      │
+                             │ M more failures (default: 3)  │
+                             ▼                               │
+                    ┌─────────────────┐                      │
+              ┌─────│    OFFLINE      │──────────────────────┘
+              │     └─────────────────┘   K consecutive successes
               │
-              └──► Trigger hop analysis (traceroute)
+              └──► Trigger gateway-first diagnosis (traceroute)
 ```
 
-### 3. Hop Analyzer
+### 3. Hop Analyzer (Gateway-First)
 
-When outage detected, run traceroute to identify failing hop:
+When outage detected:
+1. Ping gateway to determine local network health
+2. Run traceroute to identify failing hop
+3. Classify diagnosis: `LocalNetworkDown`, `IspIssue`, `Healthy`, `Intermittent`, `Unknown`
 
-```rust
-// Shell out to macOS traceroute
-// traceroute -n -q 1 -w 2 8.8.8.8
-
-// Parse output to identify:
-// - Last responding hop (likely culprit is next hop)
-// - Response times per hop
-// - Packet loss per hop
+```bash
+# Shell out to macOS traceroute
+traceroute -n -q 1 -w 2 8.8.8.8
 ```
 
-### 4. Event Logger (SQLite)
+### 4. Event Logger (SQLite v3)
 
 **Tables:**
 
 ```sql
--- Outage events
+-- Outage events (OFFLINE state)
 CREATE TABLE outages (
     id INTEGER PRIMARY KEY,
-    start_time TEXT NOT NULL,      -- ISO 8601
-    end_time TEXT,                 -- NULL if ongoing
+    start_time TEXT NOT NULL,
+    end_time TEXT,
     duration_secs REAL,
-    affected_targets TEXT,         -- JSON array
-    failing_hop INTEGER,           -- Hop number where failure occurs
+    affected_targets TEXT,       -- JSON array
+    failing_hop INTEGER,
     failing_hop_ip TEXT,
     notes TEXT
 );
 
--- Continuous ping log (sampled/aggregated)
+-- Continuous ping/connectivity log (sampled)
 CREATE TABLE ping_log (
     id INTEGER PRIMARY KEY,
     timestamp TEXT NOT NULL,
     target TEXT NOT NULL,
-    latency_ms REAL,               -- NULL if timeout
-    success INTEGER NOT NULL       -- 0 or 1
+    target_name TEXT NOT NULL,
+    latency_ms REAL,
+    success INTEGER NOT NULL
 );
 
--- Traceroute snapshots
+-- Traceroute snapshots with diagnosis metadata
 CREATE TABLE traceroutes (
     id INTEGER PRIMARY KEY,
     outage_id INTEGER REFERENCES outages(id),
+    degraded_event_id INTEGER REFERENCES degraded_events(id),
+    trace_trigger TEXT DEFAULT 'state_change',
+    gateway_reachable INTEGER,
+    gateway_latency_ms REAL,
+    diagnosis TEXT,
     timestamp TEXT NOT NULL,
-    hops TEXT NOT NULL             -- JSON array of hop data
+    target TEXT NOT NULL,
+    hops TEXT NOT NULL,          -- JSON array of hop data
+    success INTEGER NOT NULL
+);
+
+-- Degraded state events (pre-outage)
+CREATE TABLE degraded_events (
+    id INTEGER PRIMARY KEY,
+    start_time TEXT NOT NULL,
+    end_time TEXT,
+    duration_secs REAL,
+    escalated_to_outage_id INTEGER REFERENCES outages(id),
+    affected_targets TEXT NOT NULL,
+    notes TEXT
+);
+
+-- Migration tracking
+CREATE TABLE schema_version (
+    version INTEGER PRIMARY KEY,
+    applied_at TEXT NOT NULL DEFAULT (datetime('now')),
+    description TEXT
 );
 ```
 
@@ -118,124 +147,160 @@ CREATE TABLE traceroutes (
 
 ```bash
 # Start monitoring daemon
-vigil start
+vigil start [--foreground]
 
 # Check current status
 vigil status
 
 # View recent outages
-vigil outages [--last 24h | --last 7d | --since "2024-01-01"]
+vigil outages [--last 24h | --last 7d]
+
+# View specific outage with traceroute history
+vigil outage <id>
 
 # View statistics
-vigil stats
+vigil stats [-p 7d]
 
 # Run manual traceroute
 vigil trace [target]
 
-# Export logs
-vigil export --format csv --output outages.csv
+# Configuration management
+vigil config show
+vigil config path
+vigil config set <key> <value>
 
-# Configuration
-vigil config --set ping_interval=1000
-vigil config --add-target 8.8.4.4
+# Service management (macOS launchd)
+vigil service install|uninstall|status|logs
+
+# Database management
+vigil init [--dev]
+vigil upgrade [--dry-run] [--no-backup]
+vigil cleanup [--days N]
+
+# Version and build info
+vigil version [--json]
 ```
 
 ## Implementation Steps
 
-### Phase 1: Core Infrastructure
+### Phase 1: Core Infrastructure (Features 001)
 
-- [ ] Project setup with Cargo workspace structure
-- [ ] Configuration management (TOML file + CLI overrides)
-- [ ] SQLite database setup with migrations
-- [ ] Logging framework (tracing crate)
+- [x] Project setup with Cargo
+- [x] Configuration management (TOML file)
+- [x] SQLite database setup with migrations
+- [x] Logging framework (tracing crate)
 
-### Phase 2: Ping Monitor
+### Phase 2: Ping Monitor (Feature 002)
 
-- [ ] Implement ping using `ping` shell command (macOS)
-- [ ] Parse ping output for latency/success
-- [ ] Multi-target concurrent pinging with tokio
-- [ ] Configurable intervals and timeouts
+- [x] Implement ping using `ping` shell command (macOS)
+- [x] Parse ping output for latency/success
+- [x] Multi-target concurrent pinging with tokio
+- [x] Configurable intervals and timeouts
 
-### Phase 3: Outage Detection
+### Phase 3: Outage Detection (Feature 003)
 
-- [ ] State machine implementation
-- [ ] Threshold configuration
-- [ ] Event emission on state transitions
-- [ ] Outage duration tracking
+- [x] State machine implementation (ONLINE/DEGRADED/OFFLINE)
+- [x] Threshold configuration
+- [x] Event emission on state transitions
+- [x] Outage duration tracking
 
-### Phase 4: Hop Analysis
+### Phase 4: Hop Analysis (Feature 004)
 
-- [ ] Implement traceroute shell-out
-- [ ] Parse traceroute output
-- [ ] Identify failing hop logic
-- [ ] Store traceroute snapshots
+- [x] Implement traceroute shell-out
+- [x] Parse traceroute output
+- [x] Identify failing hop logic
+- [x] Store traceroute snapshots
 
-### Phase 5: CLI & Reporting
+### Phase 5: CLI & Reporting (Feature 005)
 
-- [ ] CLI argument parsing (clap)
-- [ ] Status display
-- [ ] Outage history with filtering
-- [ ] Statistics calculation
-- [ ] CSV/JSON export
+- [x] CLI argument parsing (clap)
+- [x] Status display
+- [x] Outage history with filtering
+- [x] Statistics calculation
+- [ ] CSV/JSON export (deferred)
 
-### Phase 6: Polish
+### Phase 6: Polish (Feature 006)
 
-- [ ] Graceful shutdown handling
-- [ ] Launchd service file for macOS
-- [ ] Log rotation
-- [ ] Memory-efficient long-running operation
+- [x] Graceful shutdown handling
+- [x] Launchd service file for macOS
+- [x] Log rotation
+- [x] Memory-efficient long-running operation
+
+### Phase 7: Extended Features (Features 010-016)
+
+- [x] Enhanced culprit tracking with degraded events (Feature 010)
+- [x] Development environment isolation and upgrade strategy (Feature 011)
+- [x] CI pipeline fix (Feature 012)
+- [x] Gateway-first diagnosis (Feature 013)
+- [x] TCP/HTTP connectivity monitoring (Feature 014)
+- [x] Version and build information (Feature 015)
+- [x] Process timeout for hung subprocesses (Feature 016)
+
+### Phase 8: Future (Features 007-009)
+
+- [ ] Alerts and notifications — desktop, webhook, command (Feature 007)
+- [ ] Latency quality metrics — jitter, packet loss, MOS score (Feature 008)
+- [ ] Advanced HTTP monitoring — timing breakdown, cert tracking, CLI (Feature 009)
 
 ## Dependencies
 
 ```toml
 [dependencies]
-tokio = { version = "1", features = ["full"] }
-clap = { version = "4", features = ["derive"] }
+tokio = { version = "1", features = ["full", "signal"] }
+clap = { version = "4", features = ["derive", "env"] }
 rusqlite = { version = "0.31", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "1"
-directories = "5"                  # XDG/macOS config paths
-tabled = "0.15"                    # CLI table output
-indicatif = "0.17"                 # Progress bars
+directories = "5"
+dirs = "5"
+tabled = "0.15"
+indicatif = "0.17"
+futures = "0.3"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 ```
 
 ## Configuration File
 
-Location: `~/.config/vigil/config.toml`
+Location: `~/Library/Application Support/ch.kapptec.vigil/config.toml`
 
 ```toml
 [monitor]
-ping_interval_ms = 1000
-ping_timeout_ms = 2000
-degraded_threshold = 3      # consecutive failures to enter DEGRADED
-offline_threshold = 5       # consecutive failures to enter OFFLINE
-recovery_threshold = 2      # consecutive successes to recover
+ping_interval_ms = 2000           # How often to check (ms)
+ping_timeout_ms = 2000            # Ping/connection timeout (ms)
+degraded_threshold = 2            # Failures before DEGRADED state
+offline_threshold = 3             # Failures before OFFLINE state
+recovery_threshold = 3            # Successes to recover
+traceroute_interval_secs = 60     # Periodic traceroute during outage
+max_traceroutes_per_outage = 10   # Limit stored per outage
+ping_process_timeout_ms = 6000    # Hard subprocess timeout
+degraded_ping_interval_ms = 500   # Faster polling during DEGRADED
 
 [targets]
-gateway = "192.168.1.1"     # Auto-detect if not set
+gateway = "10.0.0.1"             # Auto-detected if not set
 targets = [
-    { name = "Google DNS", ip = "8.8.8.8" },
-    { name = "Cloudflare", ip = "1.1.1.1" },
+    { name = "Google DNS", ip = "8.8.8.8", method = "tcp", port = 443 },
+    { name = "Cloudflare", ip = "1.1.1.1", method = "tcp", port = 443 },
 ]
+# method: "tcp" (default), "ping" (ICMP), or "http"
 
 [database]
-path = "~/.local/share/vigil/monitor.db"
 retention_days = 90
 
 [logging]
 level = "info"
-file = "~/.local/share/vigil/monitor.log"
 ```
 
 ## macOS Shell Commands Used
 
 ```bash
-# Ping (single packet, 2 second timeout)
+# Ping (single packet, timeout in milliseconds)
+# Note: macOS -W flag takes milliseconds, not seconds
 ping -c 1 -W 2000 8.8.8.8
 
 # Traceroute (numeric, 1 query per hop, 2 second wait)
@@ -243,54 +308,6 @@ traceroute -n -q 1 -w 2 8.8.8.8
 
 # Get default gateway
 route -n get default | grep gateway
-
-# Get network interface info
-networksetup -listallhardwareports
-ifconfig en0
-```
-
-## Output Examples
-
-### Status Command
-
-```
-$ vigil status
-
-Network Monitor Status
-══════════════════════════════════════════════════════════
-
-Current State: ONLINE ✓
-Uptime: 2h 34m 12s (since last outage)
-
-Target Health:
-  Gateway (192.168.1.1)     ✓  12ms
-  Google DNS (8.8.8.8)      ✓  18ms
-  Cloudflare (1.1.1.1)      ✓  15ms
-
-Today's Statistics:
-  Outages: 3
-  Total downtime: 1m 45s
-  Availability: 99.88%
-```
-
-### Outages Command
-
-```
-$ vigil outages --last 24h
-
-Recent Outages (last 24 hours)
-══════════════════════════════════════════════════════════
-
-┌─────────────────────┬──────────┬─────────────┬───────────────────┐
-│ Start Time          │ Duration │ Failing Hop │ Affected Targets  │
-├─────────────────────┼──────────┼─────────────┼───────────────────┤
-│ 2024-01-15 14:23:05 │ 12s      │ 3 (ISP)     │ 8.8.8.8, 1.1.1.1  │
-│ 2024-01-15 09:45:32 │ 45s      │ 2 (Home)   │ All targets       │
-│ 2024-01-15 03:12:18 │ 8s       │ 3 (ISP)     │ 8.8.8.8, 1.1.1.1  │
-└─────────────────────┴──────────┴─────────────┴───────────────────┘
-
-Summary: 3 outages, 1m 5s total downtime
-Most common failing hop: Hop 3 (ISP gateway) - 2 occurrences
 ```
 
 ## File Structure
@@ -298,32 +315,46 @@ Most common failing hop: Hop 3 (ISP gateway) - 2 occurrences
 ```
 vigil/
 ├── Cargo.toml
+├── build.rs                 # Build-time info (git hash, timestamp)
 ├── PLAN.md
+├── README.md
+├── claude.md                # Development context
+├── scripts/
+│   └── qa.sh                # QA: fmt, clippy, test, doc, build
 ├── src/
-│   ├── main.rs              # CLI entry point
-│   ├── lib.rs               # Library root
-│   ├── config.rs            # Configuration management
-│   ├── db.rs                # SQLite operations
+│   ├── main.rs              # CLI entry point (clap)
+│   ├── lib.rs               # Library root, logging, version constants
+│   ├── config.rs            # Configuration, environment support
+│   ├── db.rs                # SQLite operations, migrations (v1→v3)
+│   ├── models.rs            # Data structures (Target, Outage, PingResult, etc.)
 │   ├── monitor/
-│   │   ├── mod.rs
-│   │   ├── ping.rs          # Ping implementation
-│   │   ├── state.rs         # State machine
-│   │   └── traceroute.rs    # Traceroute implementation
-│   ├── cli/
-│   │   ├── mod.rs
-│   │   ├── start.rs         # Start command
-│   │   ├── status.rs        # Status command
-│   │   ├── outages.rs       # Outages command
-│   │   └── stats.rs         # Stats command
-│   └── models.rs            # Data structures
-└── tests/
-    └── integration.rs
+│   │   ├── mod.rs           # Unified connectivity dispatcher
+│   │   ├── ping.rs          # ICMP ping with process timeout
+│   │   ├── tcp.rs           # TCP connectivity checks
+│   │   ├── http.rs          # HTTP endpoint checks
+│   │   ├── state.rs         # State machine (ONLINE/DEGRADED/OFFLINE)
+│   │   └── traceroute.rs    # Traceroute + gateway-first diagnosis
+│   └── cli/
+│       ├── mod.rs
+│       ├── start.rs         # Start monitor daemon
+│       ├── status.rs        # Current status display
+│       ├── outages.rs       # List outages
+│       ├── outage_detail.rs # Detailed outage view with traceroutes
+│       ├── stats.rs         # Statistics reporting
+│       ├── service.rs       # macOS launchd service management
+│       ├── version.rs       # Version and build info
+│       └── helpers.rs       # Shared CLI utilities
+└── docs/
+    ├── README.md            # Documentation index
+    ├── architecture.md      # System design
+    ├── usage.md             # User guide
+    └── features/            # Feature specifications (001-016)
 ```
 
 ## Success Criteria
 
 1. **Reliability**: Runs continuously without crashes or memory leaks
-2. **Accuracy**: Detects outages within 3 seconds of occurrence
-3. **Insight**: Correctly identifies failing network hop 90%+ of the time
+2. **Accuracy**: Detects outages within seconds of occurrence
+3. **Insight**: Correctly identifies failing network hop via gateway-first diagnosis
 4. **Usability**: Clear CLI output helps diagnose network issues
 5. **Performance**: Minimal CPU/memory footprint (<1% CPU, <50MB RAM)

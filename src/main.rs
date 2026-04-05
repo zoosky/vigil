@@ -186,7 +186,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Outages { last } => cmd_outages(&last, &env)?,
         Commands::Outage { id } => cmd_outage_detail(id, &env)?,
         Commands::Stats { period } => cmd_stats(&period, &env)?,
-        Commands::Trace { target } => cmd_trace(&target).await?,
+        Commands::Trace { target } => cmd_trace(&target, &env).await?,
         Commands::Service { action } => cmd_service(action)?,
         Commands::Cleanup { days } => cmd_cleanup(days, &env)?,
         Commands::Version { json } => cmd_version(json, &env)?,
@@ -276,6 +276,16 @@ fn cmd_config(action: ConfigAction, env: &Environment) -> Result<(), Box<dyn std
         }
     }
     Ok(())
+}
+
+/// Create a HopAnalyzer using config-based timeouts
+fn make_hop_analyzer(config: &vigil::config::MonitorConfig) -> HopAnalyzer {
+    HopAnalyzer::with_timeouts(
+        std::time::Duration::from_millis(config.ping_timeout_ms),
+        30,
+        config.ping_process_timeout_ms,
+        config.ping_timeout_ms,
+    )
 }
 
 async fn cmd_start(_foreground: bool, env: &Environment) -> Result<(), Box<dyn std::error::Error>> {
@@ -384,7 +394,7 @@ async fn cmd_start(_foreground: bool, env: &Environment) -> Result<(), Box<dyn s
                                         tracing::info!("Degraded event recorded with ID {}", id);
 
                                         // Run network diagnosis on DEGRADED entry
-                                        let analyzer = HopAnalyzer::default();
+                                        let analyzer = make_hop_analyzer(&app.config.monitor);
                                         let trace_target = targets.first()
                                             .map(|t| t.ip.as_str())
                                             .unwrap_or("8.8.8.8");
@@ -445,7 +455,7 @@ async fn cmd_start(_foreground: bool, env: &Environment) -> Result<(), Box<dyn s
                                 );
 
                                 // Run network diagnosis to identify failing hop
-                                let analyzer = HopAnalyzer::default();
+                                let analyzer = make_hop_analyzer(&app.config.monitor);
                                 let trace_target = targets.first()
                                     .map(|t| t.ip.as_str())
                                     .unwrap_or("8.8.8.8");
@@ -622,7 +632,7 @@ async fn cmd_start(_foreground: bool, env: &Environment) -> Result<(), Box<dyn s
                                             if last_time.elapsed() >= traceroute_interval
                                                 && traceroute_count < max_traceroutes
                                             {
-                                                let analyzer = HopAnalyzer::default();
+                                                let analyzer = make_hop_analyzer(&app.config.monitor);
                                                 let trace_target = targets.first()
                                                     .map(|t| t.ip.as_str())
                                                     .unwrap_or("8.8.8.8");
@@ -741,8 +751,9 @@ fn cmd_stats(period: &str, env: &Environment) -> Result<(), Box<dyn std::error::
     cli::stats::run(&app, period)
 }
 
-async fn cmd_trace(target: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let analyzer = HopAnalyzer::default();
+async fn cmd_trace(target: &str, env: &Environment) -> Result<(), Box<dyn std::error::Error>> {
+    let config = vigil::config::Config::load_for_env(env)?;
+    let analyzer = make_hop_analyzer(&config.monitor);
     let result = analyzer.trace(target).await;
 
     print!("{}", format_traceroute(&result));

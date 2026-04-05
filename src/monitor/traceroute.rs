@@ -245,8 +245,7 @@ impl HopAnalyzer {
         };
 
         let stdout_handle = child.stdout.take();
-        let process_timeout =
-            tokio::time::sleep(Duration::from_millis(self.process_timeout_ms));
+        let process_timeout = tokio::time::sleep(Duration::from_millis(self.process_timeout_ms));
         tokio::pin!(process_timeout);
 
         tokio::select! {

@@ -369,7 +369,10 @@ mod tests {
         for round in 0..3 {
             // Send failure for first target — round not yet complete
             let event = tracker.process(&failure_ping("8.8.8.8"));
-            assert!(matches!(event, StateEvent::NoChange), "mid-round should be NoChange");
+            assert!(
+                matches!(event, StateEvent::NoChange),
+                "mid-round should be NoChange"
+            );
 
             // Send failure for second target — completes the round
             let event = tracker.process(&failure_ping("1.1.1.1"));
@@ -543,19 +546,34 @@ mod tests {
         // Round 1: both targets fail
         tracker.process(&failure_ping("8.8.8.8"));
         tracker.process(&failure_ping("1.1.1.1"));
-        assert_eq!(tracker.state(), ConnectivityState::Online, "1 round < threshold 3");
+        assert_eq!(
+            tracker.state(),
+            ConnectivityState::Online,
+            "1 round < threshold 3"
+        );
 
         // Round 2: both fail again
         tracker.process(&failure_ping("8.8.8.8"));
         tracker.process(&failure_ping("1.1.1.1"));
-        assert_eq!(tracker.state(), ConnectivityState::Online, "2 rounds < threshold 3");
+        assert_eq!(
+            tracker.state(),
+            ConnectivityState::Online,
+            "2 rounds < threshold 3"
+        );
 
         // Round 3: both fail — now hits degraded_threshold=3
         tracker.process(&failure_ping("8.8.8.8"));
         tracker.process(&failure_ping("1.1.1.1"));
-        assert_eq!(tracker.state(), ConnectivityState::Degraded, "3 rounds = threshold 3");
+        assert_eq!(
+            tracker.state(),
+            ConnectivityState::Degraded,
+            "3 rounds = threshold 3"
+        );
         // Must NOT be Offline — old bug would have reached offline here
-        assert!(tracker.current_outage().is_none(), "should not have jumped to Offline");
+        assert!(
+            tracker.current_outage().is_none(),
+            "should not have jumped to Offline"
+        );
     }
 
     #[test]
@@ -566,10 +584,7 @@ mod tests {
 
         // Use process_round to send a full batch at once
         for _ in 0..3 {
-            let results = vec![
-                failure_ping("8.8.8.8"),
-                failure_ping("1.1.1.1"),
-            ];
+            let results = vec![failure_ping("8.8.8.8"), failure_ping("1.1.1.1")];
             tracker.process_round(&results);
         }
         assert_eq!(tracker.state(), ConnectivityState::Degraded);

@@ -10,7 +10,11 @@
       "Bash(cargo dev status:*)",
       "Bash(cargo check:*)",
       "Bash(cargo clippy:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(wc:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(gh pr:*)"
     ]
   }
 }

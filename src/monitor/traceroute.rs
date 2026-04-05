@@ -2,6 +2,7 @@ use crate::models::{
     DiagnosisResult, NetworkDiagnostic, PingResult, TracerouteHop, TracerouteResult,
 };
 use chrono::Utc;
+use std::process::Stdio;
 use std::time::Duration;
 use tokio::process::Command;
 
@@ -9,6 +10,10 @@ use tokio::process::Command;
 pub struct HopAnalyzer {
     timeout_secs: u64,
     max_hops: u8,
+    /// Hard process timeout in milliseconds. Kills the subprocess if it exceeds this.
+    process_timeout_ms: u64,
+    /// Ping timeout in milliseconds (used for gateway ping).
+    ping_timeout_ms: u64,
 }
 
 impl Default for HopAnalyzer {
@@ -20,18 +25,38 @@ impl Default for HopAnalyzer {
 impl HopAnalyzer {
     /// Create a new hop analyzer
     pub fn new(timeout: Duration, max_hops: u8) -> Self {
+        let timeout_secs = timeout.as_secs().max(1);
+        // Default process timeout: generous upper bound based on max_hops * per-hop timeout
+        let process_timeout_ms = (max_hops as u64) * timeout_secs * 1000 + 5000;
         Self {
-            timeout_secs: timeout.as_secs().max(1),
+            timeout_secs,
             max_hops,
+            process_timeout_ms,
+            ping_timeout_ms: timeout.as_millis() as u64,
         }
     }
 
-    /// Run traceroute to a target
+    /// Create a hop analyzer with explicit process timeout and ping timeout
+    pub fn with_timeouts(
+        timeout: Duration,
+        max_hops: u8,
+        process_timeout_ms: u64,
+        ping_timeout_ms: u64,
+    ) -> Self {
+        Self {
+            timeout_secs: timeout.as_secs().max(1),
+            max_hops,
+            process_timeout_ms,
+            ping_timeout_ms,
+        }
+    }
+
+    /// Run traceroute to a target with process-level timeout
     pub async fn trace(&self, target: &str) -> TracerouteResult {
         let timestamp = Utc::now();
 
         // macOS traceroute: -n (numeric), -q 1 (1 query per hop), -w timeout, -m max_hops
-        let output = Command::new("traceroute")
+        let mut child = match Command::new("traceroute")
             .args([
                 "-n",
                 "-q",
@@ -42,24 +67,68 @@ impl HopAnalyzer {
                 &self.max_hops.to_string(),
                 target,
             ])
-            .output()
-            .await;
-
-        match output {
-            Ok(output) => {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                let hops = parse_traceroute_output(&stdout);
-                let success = check_reached_target(&hops, target);
-
-                TracerouteResult {
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+        {
+            Ok(child) => child,
+            Err(e) => {
+                tracing::error!("Failed to spawn traceroute: {}", e);
+                return TracerouteResult {
                     target: target.to_string(),
                     timestamp,
-                    hops,
-                    success,
+                    hops: vec![],
+                    success: false,
+                };
+            }
+        };
+
+        let stdout_handle = child.stdout.take();
+        let process_timeout = tokio::time::sleep(Duration::from_millis(self.process_timeout_ms));
+        tokio::pin!(process_timeout);
+
+        tokio::select! {
+            result = child.wait() => {
+                match result {
+                    Ok(_) => {
+                        let stdout = if let Some(mut handle) = stdout_handle {
+                            use tokio::io::AsyncReadExt;
+                            let mut buf = Vec::new();
+                            let _ = handle.read_to_end(&mut buf).await;
+                            String::from_utf8_lossy(&buf).to_string()
+                        } else {
+                            String::new()
+                        };
+                        let hops = parse_traceroute_output(&stdout);
+                        let success = check_reached_target(&hops, target);
+
+                        TracerouteResult {
+                            target: target.to_string(),
+                            timestamp,
+                            hops,
+                            success,
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("Traceroute execution error: {}", e);
+                        TracerouteResult {
+                            target: target.to_string(),
+                            timestamp,
+                            hops: vec![],
+                            success: false,
+                        }
+                    }
                 }
             }
-            Err(e) => {
-                tracing::error!("Failed to execute traceroute: {}", e);
+            _ = &mut process_timeout => {
+                tracing::error!(
+                    "Traceroute process timeout to {}: subprocess hung for {}ms, killing",
+                    target,
+                    self.process_timeout_ms
+                );
+                if let Err(e) = child.kill().await {
+                    tracing::warn!("Failed to kill hung traceroute process: {}", e);
+                }
                 TracerouteResult {
                     target: target.to_string(),
                     timestamp,
@@ -150,43 +219,94 @@ impl HopAnalyzer {
         DiagnosisResult::Unknown
     }
 
-    /// Ping a host asynchronously
+    /// Ping a host asynchronously with process-level timeout
     pub async fn ping_host(&self, host: &str) -> PingResult {
         let timestamp = Utc::now();
+        let timeout_str = self.ping_timeout_ms.to_string();
 
         // macOS ping: -c 1 (count), -W timeout_ms
-        let output = Command::new("ping")
-            .args(["-c", "1", "-W", "2000", host])
-            .output()
-            .await;
+        let mut child = match Command::new("ping")
+            .args(["-c", "1", "-W", &timeout_str, host])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+        {
+            Ok(child) => child,
+            Err(e) => {
+                return PingResult {
+                    target: host.to_string(),
+                    target_name: "Gateway".to_string(),
+                    timestamp,
+                    success: false,
+                    latency_ms: None,
+                    error: Some(format!("Failed to spawn ping: {}", e)),
+                };
+            }
+        };
 
-        match output {
-            Ok(output) => {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                let success = output.status.success();
-                let latency_ms = Self::parse_ping_latency(&stdout);
+        let stdout_handle = child.stdout.take();
+        let process_timeout = tokio::time::sleep(Duration::from_millis(self.process_timeout_ms));
+        tokio::pin!(process_timeout);
 
+        tokio::select! {
+            result = child.wait() => {
+                match result {
+                    Ok(status) => {
+                        let stdout = if let Some(mut handle) = stdout_handle {
+                            use tokio::io::AsyncReadExt;
+                            let mut buf = Vec::new();
+                            let _ = handle.read_to_end(&mut buf).await;
+                            String::from_utf8_lossy(&buf).to_string()
+                        } else {
+                            String::new()
+                        };
+                        let success = status.success();
+                        let latency_ms = Self::parse_ping_latency(&stdout);
+
+                        PingResult {
+                            target: host.to_string(),
+                            target_name: "Gateway".to_string(),
+                            timestamp,
+                            success,
+                            latency_ms,
+                            error: if success {
+                                None
+                            } else {
+                                Some("timeout".to_string())
+                            },
+                        }
+                    }
+                    Err(e) => PingResult {
+                        target: host.to_string(),
+                        target_name: "Gateway".to_string(),
+                        timestamp,
+                        success: false,
+                        latency_ms: None,
+                        error: Some(e.to_string()),
+                    },
+                }
+            }
+            _ = &mut process_timeout => {
+                tracing::error!(
+                    "Gateway ping process timeout to {}: hung for {}ms, killing",
+                    host,
+                    self.process_timeout_ms
+                );
+                if let Err(e) = child.kill().await {
+                    tracing::warn!("Failed to kill hung ping process: {}", e);
+                }
                 PingResult {
                     target: host.to_string(),
                     target_name: "Gateway".to_string(),
                     timestamp,
-                    success,
-                    latency_ms,
-                    error: if success {
-                        None
-                    } else {
-                        Some("timeout".to_string())
-                    },
+                    success: false,
+                    latency_ms: None,
+                    error: Some(format!(
+                        "Process timeout ({}ms) - network stack may be hung",
+                        self.process_timeout_ms
+                    )),
                 }
             }
-            Err(e) => PingResult {
-                target: host.to_string(),
-                target_name: "Gateway".to_string(),
-                timestamp,
-                success: false,
-                latency_ms: None,
-                error: Some(e.to_string()),
-            },
         }
     }
 

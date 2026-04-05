@@ -68,9 +68,13 @@ pub struct ConnectivityTracker {
     current_outage: Option<Outage>,
     current_degraded_event: Option<DegradedEvent>,
 
-    // Aggregate counters for state transitions
+    // Aggregate counters for state transitions (incremented once per round)
     aggregate_failures: u32,
     aggregate_successes: u32,
+
+    // Round tracking: only evaluate state after all targets report
+    expected_targets: usize,
+    results_this_round: usize,
 }
 
 impl ConnectivityTracker {
@@ -89,16 +93,48 @@ impl ConnectivityTracker {
             current_degraded_event: None,
             aggregate_failures: 0,
             aggregate_successes: 0,
+            expected_targets: targets.len().max(1),
+            results_this_round: 0,
         }
     }
 
-    /// Process a ping result, returns any state change event
+    /// Process a batch of ping results from a single monitoring round.
+    /// All results from one round should be collected and passed together
+    /// so that aggregate counters increment once per round, not once per target.
+    pub fn process_round(&mut self, results: &[PingResult]) -> StateEvent {
+        // Update per-target state for each result in the round
+        for result in results {
+            if let Some(target_state) = self.target_states.get_mut(&result.target) {
+                target_state.update(result);
+            }
+        }
+
+        self.evaluate_state()
+    }
+
+    /// Process a single ping result (for backwards compatibility).
+    /// Tracks how many results have arrived this round and only evaluates
+    /// state transitions once all targets have reported.
     pub fn process(&mut self, result: &PingResult) -> StateEvent {
         // Update target-specific state
         if let Some(target_state) = self.target_states.get_mut(&result.target) {
             target_state.update(result);
         }
 
+        self.results_this_round += 1;
+
+        // Only evaluate state once all targets have reported for this round
+        if self.results_this_round >= self.expected_targets {
+            self.results_this_round = 0;
+            self.evaluate_state()
+        } else {
+            StateEvent::NoChange
+        }
+    }
+
+    /// Evaluate aggregate state and perform state machine transitions.
+    /// Called once per complete round of results.
+    fn evaluate_state(&mut self) -> StateEvent {
         // Count currently failing targets
         let failing_targets: Vec<String> = self
             .target_states
@@ -110,7 +146,7 @@ impl ConnectivityTracker {
         let any_failing = !failing_targets.is_empty();
         let all_healthy = failing_targets.is_empty();
 
-        // Update aggregate counters
+        // Update aggregate counters (once per round)
         if any_failing {
             self.aggregate_successes = 0;
             self.aggregate_failures += 1;
@@ -328,10 +364,19 @@ mod tests {
         let targets = make_targets();
         let mut tracker = ConnectivityTracker::new(&config, &targets);
 
-        // Send failures until degraded threshold (3)
-        for i in 0..3 {
+        // With 2 targets, need to send both results per round to complete a round.
+        // degraded_threshold = 3 rounds of failure.
+        for round in 0..3 {
+            // Send failure for first target — round not yet complete
             let event = tracker.process(&failure_ping("8.8.8.8"));
-            if i < 2 {
+            assert!(
+                matches!(event, StateEvent::NoChange),
+                "mid-round should be NoChange"
+            );
+
+            // Send failure for second target — completes the round
+            let event = tracker.process(&failure_ping("1.1.1.1"));
+            if round < 2 {
                 assert!(matches!(event, StateEvent::NoChange));
                 assert_eq!(tracker.state(), ConnectivityState::Online);
             } else {
@@ -347,16 +392,18 @@ mod tests {
         let targets = make_targets();
         let mut tracker = ConnectivityTracker::new(&config, &targets);
 
-        // Get to degraded state
+        // Get to degraded state (3 rounds of failure with 2 targets each)
         for _ in 0..3 {
             tracker.process(&failure_ping("8.8.8.8"));
+            tracker.process(&failure_ping("1.1.1.1"));
         }
         assert_eq!(tracker.state(), ConnectivityState::Degraded);
 
-        // Continue failing until offline threshold (5 total)
-        for i in 3..5 {
-            let event = tracker.process(&failure_ping("8.8.8.8"));
-            if i < 4 {
+        // Continue failing until offline threshold (5 total rounds)
+        for round in 3..5 {
+            tracker.process(&failure_ping("8.8.8.8"));
+            let event = tracker.process(&failure_ping("1.1.1.1"));
+            if round < 4 {
                 assert!(matches!(event, StateEvent::NoChange));
             } else {
                 assert!(matches!(event, StateEvent::Offline { .. }));
@@ -373,20 +420,23 @@ mod tests {
         let targets = make_targets();
         let mut tracker = ConnectivityTracker::new(&config, &targets);
 
-        // Get to offline state
+        // Get to offline state (5 rounds of failure with 2 targets)
         for _ in 0..5 {
             tracker.process(&failure_ping("8.8.8.8"));
+            tracker.process(&failure_ping("1.1.1.1"));
         }
         assert_eq!(tracker.state(), ConnectivityState::Offline);
         assert!(tracker.current_outage().is_some());
 
-        // Recovery requires successes from ALL targets
-        // First success
+        // Recovery requires recovery_threshold (2) consecutive successful rounds
+        // Round 1: both succeed
         tracker.process(&success_ping("8.8.8.8"));
+        tracker.process(&success_ping("1.1.1.1"));
         assert_eq!(tracker.state(), ConnectivityState::Offline);
 
-        // Second success - should recover
-        let event = tracker.process(&success_ping("8.8.8.8"));
+        // Round 2: both succeed — should recover
+        tracker.process(&success_ping("8.8.8.8"));
+        let event = tracker.process(&success_ping("1.1.1.1"));
         assert!(matches!(event, StateEvent::Recovered { .. }));
         assert_eq!(tracker.state(), ConnectivityState::Online);
         assert!(tracker.current_outage().is_none());
@@ -404,15 +454,17 @@ mod tests {
         let targets = make_targets();
         let mut tracker = ConnectivityTracker::new(&config, &targets);
 
-        // Get to degraded state
+        // Get to degraded state (3 rounds)
         for _ in 0..3 {
             tracker.process(&failure_ping("8.8.8.8"));
+            tracker.process(&failure_ping("1.1.1.1"));
         }
         assert_eq!(tracker.state(), ConnectivityState::Degraded);
 
-        // Recover before going offline
+        // Recover before going offline (2 rounds of success)
         for _ in 0..2 {
             tracker.process(&success_ping("8.8.8.8"));
+            tracker.process(&success_ping("1.1.1.1"));
         }
 
         // Should be back online, no outage recorded
@@ -426,13 +478,15 @@ mod tests {
         let targets = make_targets();
         let mut tracker = ConnectivityTracker::new(&config, &targets);
 
-        // Single failure should not change state
-        let event = tracker.process(&failure_ping("8.8.8.8"));
+        // One round: one target fails, one succeeds — any_failing so aggregate_failures=1
+        tracker.process(&failure_ping("8.8.8.8"));
+        let event = tracker.process(&success_ping("1.1.1.1"));
         assert!(matches!(event, StateEvent::NoChange));
         assert_eq!(tracker.state(), ConnectivityState::Online);
 
-        // Success should reset
+        // Next round: all succeed — should reset counters
         tracker.process(&success_ping("8.8.8.8"));
+        tracker.process(&success_ping("1.1.1.1"));
         assert_eq!(tracker.state(), ConnectivityState::Online);
     }
 
@@ -442,18 +496,20 @@ mod tests {
         let targets = make_targets();
         let mut tracker = ConnectivityTracker::new(&config, &targets);
 
-        // Get to degraded
+        // Get to degraded (3 rounds)
         for _ in 0..3 {
             tracker.process(&failure_ping("8.8.8.8"));
+            tracker.process(&failure_ping("1.1.1.1"));
         }
         assert_eq!(tracker.state(), ConnectivityState::Degraded);
 
-        // Single success should not recover
+        // One round of success — not enough (need recovery_threshold=2)
         tracker.process(&success_ping("8.8.8.8"));
-        // This resets aggregate_failures but we need 2 consecutive successes
+        tracker.process(&success_ping("1.1.1.1"));
 
-        // Another failure
+        // Then another failure round — resets success counter
         tracker.process(&failure_ping("8.8.8.8"));
+        tracker.process(&failure_ping("1.1.1.1"));
 
         // Should still be degraded due to flapping
         assert_eq!(tracker.state(), ConnectivityState::Degraded);
@@ -465,8 +521,9 @@ mod tests {
         let targets = make_targets();
         let mut tracker = ConnectivityTracker::new(&config, &targets);
 
-        // Fail one target
+        // Complete one round: one fails, one succeeds
         tracker.process(&failure_ping("8.8.8.8"));
+        tracker.process(&success_ping("1.1.1.1"));
 
         let failing = tracker.failing_targets();
         assert_eq!(failing.len(), 1);
@@ -476,5 +533,66 @@ mod tests {
         let states = tracker.target_states();
         let cloudflare = states.get("1.1.1.1").unwrap();
         assert!(!cloudflare.is_failing());
+    }
+
+    #[test]
+    fn test_multi_target_round_counting() {
+        // This test verifies the critical fix: with 2 targets, a single round
+        // of failures should only increment aggregate_failures by 1, not 2.
+        let config = make_config(); // degraded_threshold=3, offline_threshold=5
+        let targets = make_targets(); // 2 targets
+        let mut tracker = ConnectivityTracker::new(&config, &targets);
+
+        // Round 1: both targets fail
+        tracker.process(&failure_ping("8.8.8.8"));
+        tracker.process(&failure_ping("1.1.1.1"));
+        assert_eq!(
+            tracker.state(),
+            ConnectivityState::Online,
+            "1 round < threshold 3"
+        );
+
+        // Round 2: both fail again
+        tracker.process(&failure_ping("8.8.8.8"));
+        tracker.process(&failure_ping("1.1.1.1"));
+        assert_eq!(
+            tracker.state(),
+            ConnectivityState::Online,
+            "2 rounds < threshold 3"
+        );
+
+        // Round 3: both fail — now hits degraded_threshold=3
+        tracker.process(&failure_ping("8.8.8.8"));
+        tracker.process(&failure_ping("1.1.1.1"));
+        assert_eq!(
+            tracker.state(),
+            ConnectivityState::Degraded,
+            "3 rounds = threshold 3"
+        );
+        // Must NOT be Offline — old bug would have reached offline here
+        assert!(
+            tracker.current_outage().is_none(),
+            "should not have jumped to Offline"
+        );
+    }
+
+    #[test]
+    fn test_process_round_batch() {
+        let config = make_config();
+        let targets = make_targets();
+        let mut tracker = ConnectivityTracker::new(&config, &targets);
+
+        // Use process_round to send a full batch at once
+        for _ in 0..3 {
+            let results = vec![failure_ping("8.8.8.8"), failure_ping("1.1.1.1")];
+            tracker.process_round(&results);
+        }
+        assert_eq!(tracker.state(), ConnectivityState::Degraded);
+
+        // Two more rounds to go offline
+        for _ in 0..2 {
+            tracker.process_round(&[failure_ping("8.8.8.8"), failure_ping("1.1.1.1")]);
+        }
+        assert_eq!(tracker.state(), ConnectivityState::Offline);
     }
 }
